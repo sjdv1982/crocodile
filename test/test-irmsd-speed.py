@@ -26,11 +26,6 @@ refe_if_r, refe_if_l = get_coor(refe_receptor[imasks[0]]), get_coor(refe_ligand[
 
 lenr, lenl = len(refe_if_r), len(refe_if_l)
 natoms = lenr + lenl    
-f = max( 
-    lenr/natoms,
-    lenl/natoms
-)
-f = sqrt(lenl/natoms * lenr/natoms) ###
 
 refe_com = (refe_if_r.sum(axis=0) + refe_if_l.sum(axis=0)) / natoms
 refe_if_r -= refe_com
