@@ -20,7 +20,7 @@ def get_coor(pdb):
 
 def calc_covar(atoms1, atoms2):
     assert atoms1.shape == atoms2.shape
-    return np.dot( np.transpose(atoms1), atoms2)
+    return atoms1.T.dot(atoms2)
 
 if_r, if_l = get_coor(receptor[imasks[0]]), get_coor(ligand[imasks[1]])
 refe_if_r, refe_if_l = get_coor(refe_receptor[imasks[0]]), get_coor(refe_ligand[imasks[1]])
@@ -55,9 +55,9 @@ for offset0 in itertools.product(range(10), repeat=3):
     offset[:] = offset0 
     offset *= 1.2
 
+    """
     gold = np.concatenate([if_r, if_l + offset])
     gold -= gold.sum(axis=0)/len(gold)
-    """
     gold_covar = calc_covar(gold, gold_refe)
     print("Gold covar")
     print(gold_covar)
