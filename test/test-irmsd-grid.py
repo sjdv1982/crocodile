@@ -103,9 +103,7 @@ def irmsd_voxel(offset, gridlevel, threshold):
             else:
                 irmsd_voxel(curr_offset, gridlevel-1, threshold)
 
-#max_gridlevel = 8
-max_gridlevel = 6
-#max_gridlevel = 1 ###
+max_gridlevel = 10
 threshold=4
 print("Voxel size:", lowest_voxelsize, "Å")
 print("Box size", lowest_voxelsize * 2**max_gridlevel, "Å")
