@@ -3,7 +3,7 @@ import numpy as np
 from numpy import sqrt
 from numpy.linalg import svd, det
 from crocodile.parse_pdb import parse_pdb
-receptor = parse_pdb(open("rotate-A.pdb").read())
+receptor = parse_pdb(open("1AVXA-unbound-heavy.pdb").read())
 ligand = parse_pdb(open("rotate-B.pdb").read())
 refe_receptor = parse_pdb(open("1AVXA-bound-heavy.pdb").read())
 refe_ligand = parse_pdb(open("1AVXB-bound-heavy.pdb").read())
