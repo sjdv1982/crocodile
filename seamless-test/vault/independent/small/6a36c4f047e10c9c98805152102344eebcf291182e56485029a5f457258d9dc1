@@ -1,0 +1,2 @@
+def parse_pdb(pdb):
+    return parse_pdb_module.parse_pdb(pdb)
