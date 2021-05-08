@@ -1,0 +1,31 @@
+{
+  "conflict": {
+    "celltype": "text",
+    "io": "edit",
+    "type": "cell"
+  },
+  "fallback_mode": {
+    "default": "modified",
+    "type": "value"
+  },
+  "merged": {
+    "celltype": "text",
+    "io": "output",
+    "type": "cell"
+  },
+  "modified": {
+    "celltype": "text",
+    "io": "edit",
+    "type": "cell"
+  },
+  "state": {
+    "celltype": "str",
+    "io": "output",
+    "type": "cell"
+  },
+  "upstream": {
+    "celltype": "text",
+    "io": "input",
+    "type": "cell"
+  }
+}

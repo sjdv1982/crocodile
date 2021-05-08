@@ -1,0 +1,566 @@
+{
+  "connections": [
+    {
+      "source": [
+        "n_random_rotations"
+      ],
+      "target": [
+        "gen_rotations",
+        "n"
+      ],
+      "type": "connection"
+    },
+    {
+      "source": [
+        "gen_rotations"
+      ],
+      "target": [
+        "random_rotations"
+      ],
+      "type": "connection"
+    },
+    {
+      "source": [
+        "pdb"
+      ],
+      "target": [
+        "parse_pdb",
+        "pdb"
+      ],
+      "type": "connection"
+    },
+    {
+      "source": [
+        "modules",
+        "parse_pdb"
+      ],
+      "target": [
+        "parse_pdb",
+        "parse_pdb_module"
+      ],
+      "type": "connection"
+    },
+    {
+      "source": [
+        "parse_pdb"
+      ],
+      "target": [
+        "struc"
+      ],
+      "type": "connection"
+    },
+    {
+      "source": [
+        "struc"
+      ],
+      "target": [
+        "get_structure_tensor",
+        "struc"
+      ],
+      "type": "connection"
+    },
+    {
+      "source": [
+        "modules",
+        "build_rotamers"
+      ],
+      "target": [
+        "get_structure_tensor",
+        "build_rotamers"
+      ],
+      "type": "connection"
+    },
+    {
+      "source": [
+        "modules",
+        "rotamers"
+      ],
+      "target": [
+        "get_structure_tensor",
+        "rotamers"
+      ],
+      "type": "connection"
+    },
+    {
+      "source": [
+        "get_structure_tensor"
+      ],
+      "target": [
+        "structure_tensor"
+      ],
+      "type": "connection"
+    },
+    {
+      "source": [
+        "structure_tensor",
+        1
+      ],
+      "target": [
+        "scalevec"
+      ],
+      "type": "connection"
+    },
+    {
+      "source": [
+        "rmsd"
+      ],
+      "target": [
+        "do_pre_analysis",
+        "rmsd"
+      ],
+      "type": "connection"
+    },
+    {
+      "source": [
+        "scalevec"
+      ],
+      "target": [
+        "do_pre_analysis",
+        "scalevec"
+      ],
+      "type": "connection"
+    },
+    {
+      "source": [
+        "modules",
+        "rotamers"
+      ],
+      "target": [
+        "do_pre_analysis",
+        "rotamers"
+      ],
+      "type": "connection"
+    },
+    {
+      "source": [
+        "modules",
+        "build_rotamers"
+      ],
+      "target": [
+        "do_pre_analysis",
+        "build_rotamers"
+      ],
+      "type": "connection"
+    },
+    {
+      "source": [
+        "do_pre_analysis"
+      ],
+      "target": [
+        "pre_analysis"
+      ],
+      "type": "connection"
+    },
+    {
+      "source": [
+        "random_rotations"
+      ],
+      "target": [
+        "build_rotamers",
+        "random_rotations"
+      ],
+      "type": "connection"
+    },
+    {
+      "source": [
+        "scalevec"
+      ],
+      "target": [
+        "build_rotamers",
+        "scalevec"
+      ],
+      "type": "connection"
+    },
+    {
+      "source": [
+        "hierarchy"
+      ],
+      "target": [
+        "build_rotamers",
+        "hierarchy"
+      ],
+      "type": "connection"
+    },
+    {
+      "source": [
+        "build_rotamers_code"
+      ],
+      "target": [
+        "build_rotamers",
+        "code"
+      ],
+      "type": "connection"
+    }
+  ],
+  "lib": [],
+  "nodes": [
+    {
+      "INPUT": "inp",
+      "RESULT": "result",
+      "SCHEMA": null,
+      "checksum": {
+        "code": "df52858f0e5b27c578025f614c1e3de39f66e2ce2dc020badf901700c0adba42",
+        "input": "935289983e1193dbd8cdefc106124972bddb1eedd4faa0f13be7ab8966955551",
+        "input_buffer": "935289983e1193dbd8cdefc106124972bddb1eedd4faa0f13be7ab8966955551",
+        "main_module": "d0a1b2af1705c1b8495b00145082ef7470384e62ac1c4d9b9cdbbe0476c28f8c",
+        "result": "aad4db7d3a93b8c9d67fb276feb40fd7bedd134ff35c5fbd3f46342fdf2850cd",
+        "result_schema": "60c9810c32497c324d2a5ff5a0292cb97d258f11dc22e95f67c43d17b3d44dd0",
+        "schema": "10d5b25952d90fa33cbc2eeedcd9e06318c6c449c93147f2f7c7867815e9ff08"
+      },
+      "compiled": true,
+      "debug": false,
+      "file_extension": "cpp",
+      "hash_pattern": {
+        "*": "#"
+      },
+      "language": "cpp",
+      "path": [
+        "build_rotamers"
+      ],
+      "pins": {
+        "hierarchy": {
+          "celltype": "mixed"
+        },
+        "random_rotations": {
+          "celltype": "mixed"
+        },
+        "scalevec": {
+          "celltype": "mixed"
+        }
+      },
+      "type": "transformer"
+    },
+    {
+      "celltype": "code",
+      "checksum": {
+        "value": "df52858f0e5b27c578025f614c1e3de39f66e2ce2dc020badf901700c0adba42"
+      },
+      "datatype": "mixed",
+      "file_extension": "cpp",
+      "language": "cpp",
+      "mount": {
+        "as_directory": false,
+        "authority": "file",
+        "mode": "rw",
+        "path": "build-rotamers.cpp",
+        "persistent": true
+      },
+      "path": [
+        "build_rotamers_code"
+      ],
+      "type": "cell"
+    },
+    {
+      "INPUT": "inp",
+      "RESULT": "result",
+      "SCHEMA": null,
+      "checksum": {
+        "code": "6e2a1d08ba820720e1ac0dbe86b8b3b9992bcdafb01f46b0588428a58b0391e5",
+        "input": "f5106dc08ed720af013dfd21e361ab4b0bece25965177db3114a735a10acf89a",
+        "input_auth": "8c7a2fe471fc9d8bea9121ab09f870deb6330ffd14397bab051e2ffbf0dce591",
+        "input_buffer": "f5106dc08ed720af013dfd21e361ab4b0bece25965177db3114a735a10acf89a",
+        "result": "f6ae8691c06ff46c1a6f7dcc119b54e839f7cf6acda203fab6dd5d13f15d378c",
+        "result_schema": "d0a1b2af1705c1b8495b00145082ef7470384e62ac1c4d9b9cdbbe0476c28f8c",
+        "schema": "d0a1b2af1705c1b8495b00145082ef7470384e62ac1c4d9b9cdbbe0476c28f8c"
+      },
+      "compiled": false,
+      "debug": false,
+      "hash_pattern": {
+        "*": "#"
+      },
+      "language": "python",
+      "path": [
+        "do_pre_analysis"
+      ],
+      "pins": {
+        "build_rotamers": {
+          "celltype": "plain",
+          "subcelltype": "module"
+        },
+        "maxcostfrac": {
+          "celltype": "mixed"
+        },
+        "rmsd": {
+          "celltype": "mixed"
+        },
+        "rotamers": {
+          "celltype": "plain",
+          "subcelltype": "module"
+        },
+        "rsize": {
+          "celltype": "mixed"
+        },
+        "scalevec": {
+          "celltype": "mixed"
+        }
+      },
+      "type": "transformer"
+    },
+    {
+      "INPUT": "inp",
+      "RESULT": "result",
+      "SCHEMA": null,
+      "checksum": {
+        "code": "3f279911c493236c69ae28601696de4d08bde00a34f23e0bc647831f0e30a884",
+        "input": "fde3e5864577e8def7c3e2f70b35a7b9f1e4a9e05b3667b4e537bd1e3ce2950f",
+        "input_buffer": "fde3e5864577e8def7c3e2f70b35a7b9f1e4a9e05b3667b4e537bd1e3ce2950f",
+        "result": "9966e161771e52baa3e0d9d5f4b6bbc0e3faefa117df707f41b30bdafa34a47c",
+        "result_schema": "1a06d28d9e535917eb9ef4a1c63d7422c1cd03ddcd685ae650162722bbe10952",
+        "schema": "5af44a6eb895e329e7a19e456015731b6074f3a209fa6565de3c08a87670aa8b"
+      },
+      "compiled": false,
+      "debug": false,
+      "hash_pattern": {
+        "*": "#"
+      },
+      "language": "python",
+      "path": [
+        "gen_rotations"
+      ],
+      "pins": {
+        "n": {
+          "celltype": "mixed"
+        }
+      },
+      "type": "transformer"
+    },
+    {
+      "INPUT": "inp",
+      "RESULT": "result",
+      "SCHEMA": null,
+      "checksum": {
+        "code": "c287a2ff8a4145b31c9364d3f58befd4275f914cb2ee9db4af900f9ee9fc5aa6",
+        "input": "c15be8611136b651e66cfb9f57abb8770fcb72ef3523cace9a465f5b18a1251a",
+        "input_buffer": "c15be8611136b651e66cfb9f57abb8770fcb72ef3523cace9a465f5b18a1251a",
+        "result": "7505d0eb06b8a35965968eb1e85e3c733d12a27fa5dc848a977da5847b7cfd8c",
+        "result_schema": "d0a1b2af1705c1b8495b00145082ef7470384e62ac1c4d9b9cdbbe0476c28f8c",
+        "schema": "d0a1b2af1705c1b8495b00145082ef7470384e62ac1c4d9b9cdbbe0476c28f8c"
+      },
+      "compiled": false,
+      "debug": false,
+      "hash_pattern": {
+        "*": "#"
+      },
+      "language": "python",
+      "path": [
+        "get_structure_tensor"
+      ],
+      "pins": {
+        "build_rotamers": {
+          "celltype": "plain",
+          "subcelltype": "module"
+        },
+        "rotamers": {
+          "celltype": "plain",
+          "subcelltype": "module"
+        },
+        "struc": {
+          "celltype": "mixed"
+        }
+      },
+      "type": "transformer"
+    },
+    {
+      "celltype": "binary",
+      "checksum": {
+        "value": "38058e3639afb648b25f47992ca23d6adc5352d1ccacef7ebff07561cb0310f0"
+      },
+      "datatype": "mixed",
+      "path": [
+        "hierarchy"
+      ],
+      "type": "cell"
+    },
+    {
+      "path": [
+        "modules"
+      ],
+      "type": "context"
+    },
+    {
+      "checksum": "29e65f00e94ba3836989d4064204f483ffd18a187bb610cc1ce30c1d2316b295",
+      "dependencies": [
+        "rotamers"
+      ],
+      "language": "python",
+      "module_type": "interpreted",
+      "mount": {
+        "authority": "file",
+        "mode": "r",
+        "path": "util/build-rotamers.py",
+        "persistent": true
+      },
+      "path": [
+        "modules",
+        "build_rotamers"
+      ],
+      "type": "module"
+    },
+    {
+      "checksum": "b15d65d1e24bacd150cd2ec48e429836b0514942597a00f7df1326260ea3a1d3",
+      "dependencies": [],
+      "language": "python",
+      "module_type": "interpreted",
+      "mount": {
+        "authority": "file",
+        "mode": "r",
+        "path": "crocodile/parse_pdb.py",
+        "persistent": true
+      },
+      "path": [
+        "modules",
+        "parse_pdb"
+      ],
+      "type": "module"
+    },
+    {
+      "checksum": "890328f091c54fe75a02e61b0811e11fc82258b9dbc6730ca3faba7c9d870756",
+      "dependencies": [],
+      "language": "python",
+      "module_type": "interpreted",
+      "mount": {
+        "authority": "file",
+        "mode": "r",
+        "path": "util/rotamers.py",
+        "persistent": true
+      },
+      "path": [
+        "modules",
+        "rotamers"
+      ],
+      "type": "module"
+    },
+    {
+      "celltype": "int",
+      "checksum": {
+        "value": "68caf5f465f07da1e81b7468b0fd19b51afd17255bb124a170fb4e1028e26e79"
+      },
+      "datatype": "mixed",
+      "path": [
+        "n_random_rotations"
+      ],
+      "type": "cell"
+    },
+    {
+      "INPUT": "inp",
+      "RESULT": "result",
+      "SCHEMA": null,
+      "checksum": {
+        "code": "6a36c4f047e10c9c98805152102344eebcf291182e56485029a5f457258d9dc1",
+        "input": "496fadcc40cfd60a1a4eb06309fecf8a00644c4fe2001fe55bff0a75e967a531",
+        "input_buffer": "496fadcc40cfd60a1a4eb06309fecf8a00644c4fe2001fe55bff0a75e967a531",
+        "result": "0d159342e54b80ca1dba481f14e68e2a2d27ddedf1aadb77d61a57e5801b764c",
+        "result_schema": "d0a1b2af1705c1b8495b00145082ef7470384e62ac1c4d9b9cdbbe0476c28f8c",
+        "schema": "d0a1b2af1705c1b8495b00145082ef7470384e62ac1c4d9b9cdbbe0476c28f8c"
+      },
+      "compiled": false,
+      "debug": false,
+      "hash_pattern": {
+        "*": "#"
+      },
+      "language": "python",
+      "path": [
+        "parse_pdb"
+      ],
+      "pins": {
+        "parse_pdb_module": {
+          "celltype": "plain",
+          "subcelltype": "module"
+        },
+        "pdb": {
+          "celltype": "mixed"
+        }
+      },
+      "type": "transformer"
+    },
+    {
+      "celltype": "text",
+      "checksum": {
+        "value": "dd91f0d0f02d2133fc0f1ccfed0f3817dbd185e3aa985e871acc04cb7090669a"
+      },
+      "datatype": "mixed",
+      "path": [
+        "pdb"
+      ],
+      "type": "cell"
+    },
+    {
+      "celltype": "structured",
+      "checksum": {
+        "buffer": "f6ae8691c06ff46c1a6f7dcc119b54e839f7cf6acda203fab6dd5d13f15d378c",
+        "value": "f6ae8691c06ff46c1a6f7dcc119b54e839f7cf6acda203fab6dd5d13f15d378c"
+      },
+      "datatype": "mixed",
+      "hash_pattern": null,
+      "path": [
+        "pre_analysis"
+      ],
+      "type": "cell"
+    },
+    {
+      "celltype": "structured",
+      "checksum": {
+        "buffer": "9966e161771e52baa3e0d9d5f4b6bbc0e3faefa117df707f41b30bdafa34a47c",
+        "value": "9966e161771e52baa3e0d9d5f4b6bbc0e3faefa117df707f41b30bdafa34a47c"
+      },
+      "datatype": "mixed",
+      "hash_pattern": null,
+      "path": [
+        "random_rotations"
+      ],
+      "type": "cell"
+    },
+    {
+      "celltype": "float",
+      "checksum": {
+        "value": "39dacbda510b82b6fec0680fb7beb110eef660f5daef6c129ef1abfde1d4d331"
+      },
+      "datatype": "mixed",
+      "path": [
+        "rmsd"
+      ],
+      "type": "cell"
+    },
+    {
+      "celltype": "structured",
+      "checksum": {
+        "buffer": "5a08feefe7d6a4aceaadb7b108af189c42374f80d394df4b996fe8bd10dd04ec",
+        "schema": "db3b674d1b690828118a1134ab7bdcb66ca1c7c6ad4797d857d9097659c6238f",
+        "value": "5a08feefe7d6a4aceaadb7b108af189c42374f80d394df4b996fe8bd10dd04ec"
+      },
+      "datatype": "mixed",
+      "hash_pattern": null,
+      "path": [
+        "scalevec"
+      ],
+      "type": "cell"
+    },
+    {
+      "celltype": "binary",
+      "checksum": {
+        "value": "0d159342e54b80ca1dba481f14e68e2a2d27ddedf1aadb77d61a57e5801b764c"
+      },
+      "datatype": "mixed",
+      "path": [
+        "struc"
+      ],
+      "type": "cell"
+    },
+    {
+      "celltype": "structured",
+      "checksum": {
+        "buffer": "7505d0eb06b8a35965968eb1e85e3c733d12a27fa5dc848a977da5847b7cfd8c",
+        "value": "7505d0eb06b8a35965968eb1e85e3c733d12a27fa5dc848a977da5847b7cfd8c"
+      },
+      "datatype": "mixed",
+      "hash_pattern": null,
+      "path": [
+        "structure_tensor"
+      ],
+      "type": "cell"
+    }
+  ],
+  "params": {
+    "share_namespace": "ctx"
+  }
+}

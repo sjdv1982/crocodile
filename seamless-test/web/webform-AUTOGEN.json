@@ -1,0 +1,39 @@
+{
+  "cells": {},
+  "extra_components": [],
+  "index": {
+    "title": "Seamless webform"
+  },
+  "transformers": {
+    "build_rotamers": {
+      "component": "transformer-status",
+      "params": {
+        "title": "Transformer build_rotamers"
+      }
+    },
+    "do_pre_analysis": {
+      "component": "transformer-status",
+      "params": {
+        "title": "Transformer do_pre_analysis"
+      }
+    },
+    "gen_rotations": {
+      "component": "transformer-status",
+      "params": {
+        "title": "Transformer gen_rotations"
+      }
+    },
+    "get_structure_tensor": {
+      "component": "transformer-status",
+      "params": {
+        "title": "Transformer get_structure_tensor"
+      }
+    },
+    "parse_pdb": {
+      "component": "transformer-status",
+      "params": {
+        "title": "Transformer parse_pdb"
+      }
+    }
+  }
+}

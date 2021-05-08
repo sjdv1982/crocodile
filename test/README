@@ -1,0 +1,6 @@
+Note: for iRMSD threshold calculation, the threshold should be increased to account for discretization error:
+for translational grid, the discretization RMSD per dimension is sqrt(1/12 * voxelsize**2)
+  The RMSD in three dimensions is therefore equal to sqrt(3/12 * voxelsize**2) = 0.5 * voxelsize
+For the rotational discretization, assume the same RMSD (TODO: test to which degree this is true)
+Therefore, the threshold should be increased to sqrt(iRMSD**2 + 2 * (0.5 * voxelsize)**2) 
+= sqrt(iRMSD**2 + 0.5 * voxelsize**2)

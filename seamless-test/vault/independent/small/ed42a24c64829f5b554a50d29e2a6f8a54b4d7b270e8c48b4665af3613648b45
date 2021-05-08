@@ -1,0 +1,45 @@
+
+/*
+The following C header has been auto-generated from the transformer schema
+It will be used to generate bindings, but it will not be automatically
+added to the compiled transformer code.
+
+If your transformer code is written in C/C++, you may do so yourself.
+For C, you may need to include "stdint.h" and "stdbool.h".
+If your transform() function is written in C++, don't forget to add 'extern "C" '
+*/
+
+typedef struct HierarchyStruct {
+  const double *data;
+  unsigned int shape[1];
+} HierarchyStruct;
+
+typedef struct RandomRotationsStruct {
+  const double *data;
+  unsigned int shape[3];
+} RandomRotationsStruct;
+
+typedef struct ScalevecStruct {
+  const double *data;
+  unsigned int shape[1];
+} ScalevecStruct;
+
+typedef struct ResultStruct {
+  double *data;
+  unsigned int shape[3];
+} ResultStruct;
+
+extern "C" int transform(const HierarchyStruct* hierarchy, const RandomRotationsStruct* random_rotations, const ScalevecStruct* scalevec, ResultStruct *result);
+
+#include <cstdio>
+
+extern "C" int transform(
+    const HierarchyStruct* hierarchy, const RandomRotationsStruct* random_rotations, 
+    const ScalevecStruct* scalevec, ResultStruct *result
+) {
+    for (int i = 0; i < 3; i++) {
+        printf("%.3f ", scalevec->data[i]);
+    }
+    printf("\n\n");
+    return 0;
+}        

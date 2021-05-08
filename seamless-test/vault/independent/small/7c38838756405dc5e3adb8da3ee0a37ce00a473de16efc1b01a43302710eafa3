@@ -1,0 +1,56 @@
+
+#include <cstdio>
+
+typedef double Matrix[3][3];
+
+typedef struct HierarchyStruct
+{
+  const double *data;
+  unsigned int shape[1];
+} HierarchyStruct;
+
+typedef struct RandomRotationsStruct
+{
+  const double *data;
+  unsigned int shape[3];
+} RandomRotationsStruct;
+
+typedef struct ScalevecStruct
+{
+  const double *data;
+  unsigned int shape[1];
+} ScalevecStruct;
+
+typedef struct ResultStruct
+{
+  double *data;
+  unsigned int shape[3];
+} ResultStruct;
+
+extern "C" int transform(const HierarchyStruct *hierarchy, const RandomRotationsStruct *random_rotations, const ScalevecStruct *scalevec, ResultStruct *result);
+
+extern "C" int transform(
+    const HierarchyStruct *hierarchy, const RandomRotationsStruct *random_rotations,
+    const ScalevecStruct *scalevec, ResultStruct *result)
+{
+  for (int i = 0; i < 3; i++)
+  {
+    printf("%.3f ", scalevec->data[i]);
+  }
+  printf("\n\n");
+  result->shape[0] = 2;
+  int count=0;
+  for (int struc = 0; struc < 2; struc++)
+  {
+    for (int i = 0; i < 3; i++)
+    {
+      for (int j = 0; j < 3; j++)
+      {
+        Matrix *m = (Matrix *) result->data;
+        m[struc][i][j] = count;
+        count++;
+      }
+    }
+  }
+  return 0;
+}
