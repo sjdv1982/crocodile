@@ -232,7 +232,7 @@ def build_rotamers(random_mats, scalevec, hierarchy):
     nindices = 0
     nclusters, nindices = new_cluster(0, clusters, nclusters, indices, nindices)
     thresholds = np.array(hierarchy)**2
-    cum_thresholds = np.cumsum(thresholds)
+    cum_thresholds = np.cumsum(hierarchy)**2
     thresholds = thresholds[::-1]
     cum_thresholds = cum_thresholds[::-1]
     print(thresholds, cum_thresholds)
