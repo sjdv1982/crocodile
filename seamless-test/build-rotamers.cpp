@@ -344,10 +344,10 @@ int build_rotamers(
     for (int n = 0; n < nhierarchy; n++)
     {
         int nrev = nhierarchy - n - 1;
-        float h = hierarchy[n] * hierarchy[n];
-        thresholds[nrev] = h;
+        float h = hierarchy[n];
+        thresholds[nrev] = h*h;
         cumsum += h;
-        cum_thresholds[nrev] = cumsum;
+        cum_thresholds[nrev] = cumsum*cumsum;
     }
     
     for (uint matnr = 0; matnr < nrandom_mats; matnr++){
