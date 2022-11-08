@@ -1,0 +1,22 @@
+{
+  "build_rotamers.inp.status": "Status: OK",
+  "build_rotamers.status": "Status: OK",
+  "build_rotamers_code.status": "Status: OK",
+  "do_pre_analysis.inp.status": "Status: OK",
+  "do_pre_analysis.status": "Status: OK",
+  "gen_rotations.inp.status": "Status: OK",
+  "gen_rotations.status": "Status: OK",
+  "get_structure_tensor.inp.status": "Status: OK",
+  "get_structure_tensor.status": "Status: OK",
+  "hierarchy.status": "Status: OK",
+  "n_random_rotations.status": "Status: OK",
+  "parse_pdb.inp.status": "Status: OK",
+  "parse_pdb.status": "Status: OK",
+  "pdb.status": "Status: OK",
+  "pre_analysis.status": "Status: OK",
+  "random_rotations.status": "Status: OK",
+  "rmsd.status": "Status: OK",
+  "scalevec.status": "Status: OK",
+  "struc.status": "Status: OK",
+  "structure_tensor.status": "Status: OK"
+}
