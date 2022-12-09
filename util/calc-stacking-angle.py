@@ -57,7 +57,7 @@ def calc_plane(coor):
     coor = coor - coor.mean(axis=0)
     covar = coor.T.dot(coor)
     v, s, wt = svd(covar)
-    return wt[2]
+    return wt[2] / norm(wt[2])
 
 prot_coor = select_ring(prot, prot_chain, prot_resid)
 nuc_coor = select_ring(nuc, nuc_chain, nuc_resid)
@@ -65,5 +65,8 @@ nuc_coor = select_ring(nuc, nuc_chain, nuc_resid)
 prot_plane = calc_plane(prot_coor)
 nuc_plane = calc_plane(nuc_coor)
 
-angle = np.arcsin(norm(np.cross(prot_plane, nuc_plane)))
+nrm = norm(np.cross(prot_plane, nuc_plane_rotamer))
+if nrm > 1: 
+    nrm = 1
+angle = np.arcsin(nrm)
 print(angle)
