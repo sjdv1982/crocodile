@@ -19,6 +19,10 @@ def load_file(f):
 rings = {
     #nucleic acids
     "DT": ["C6", "C5", "C7", "N3", "O2", "O4"],
+    "U": ["N1", "C2", "N3", "C4", "C5", "C6"],
+    "RU": ["N1", "C2", "N3", "C4", "C5", "C6"],
+    "G": ["N1", "C2", "N3", "C4", "C5", "C6", "N7", "C8", "N9"],
+    "RG": ["N1", "C2", "N3", "C4", "C5", "C6", "N7", "C8", "N9"],
     
     # proteins
     "PHE": ["CB", "CG", "CD1", "CD2" , "CE1", "CE2", "CZ"],
