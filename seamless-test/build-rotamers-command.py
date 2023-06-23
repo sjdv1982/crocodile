@@ -80,8 +80,6 @@ assert np.all(np.abs(rmsdref0 - rmsdref[:10]) < 0.0001), (rmsdref0, rmsdref[:10]
 
 #/paranoid check
 
-verif = verif[:5000]  #
-
 not_in_cluster = 0
 for vnr, v in enumerate(verif):
     if not (vnr % 1000):

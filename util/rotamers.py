@@ -7,7 +7,7 @@ def get_structure_tensor(struc):
     v, s, wt = np.linalg.svd(struc0) 
     scalevec = s/np.sqrt(len(struc))
     tensor = wt.T
-    if np.linalg.det(tensor):
+    if np.linalg.det(tensor) == -1:
         tensor[2,2] *= -1
     return tensor, scalevec
 
