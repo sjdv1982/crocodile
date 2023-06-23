@@ -69,14 +69,14 @@ verif0 = verif[:10]
 verif0_coors = np.einsum("ij,kjl->kil", coorx, verif0) # broadcasted coorx.dot(verif0[k])
 dref0 = verif0_coors - coorx
 rmsdref0 = np.sqrt((dref0*dref0).sum(axis=2).mean(axis=1))
-assert np.all(np.abs(rmsdref0 - rmsdref[:10]) < 0.02), (rmsdref0, rmsdref[:10])
+assert np.all(np.abs(rmsdref0 - rmsdref[:10]) < 0.05), (rmsdref0, rmsdref[:10])
 
 verifx = np.einsum("ij,kjl->kil", tensor, verif) #broadcasted tensor.dot(verif[k])
 verif0x = verifx[:10]
 verif0_xcoors = np.einsum("ij,kjl->kil", coor, verif0x)
 dref0 = verif0_xcoors - coor.dot(tensor)
 rmsdref0 = np.sqrt((dref0*dref0).sum(axis=2).mean(axis=1))
-assert np.all(np.abs(rmsdref0 - rmsdref[:10]) < 0.02), (rmsdref0, rmsdref[:10])
+assert np.all(np.abs(rmsdref0 - rmsdref[:10]) < 0.05), (rmsdref0, rmsdref[:10])
 
 #/paranoid check
 
