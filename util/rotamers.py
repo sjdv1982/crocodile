@@ -6,7 +6,10 @@ def get_structure_tensor(struc):
     struc0 = struc - struc.mean(axis=0)
     v, s, wt = np.linalg.svd(struc0) 
     scalevec = s/np.sqrt(len(struc))
-    return wt.T, scalevec
+    tensor = wt.T
+    if np.linalg.det(tensor):
+        tensor[2,2] *= -1
+    return tensor, scalevec
 
 
 def get_msd(mats, refe, scalevec):
