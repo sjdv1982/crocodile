@@ -122,7 +122,7 @@ form = tf.schema.properties.hierarchy["form"]
 form.contiguous = True
 tf.result.example.set(np.zeros((5,3,3)))
 form = tf.result.schema["form"]
-form.shape = (0, MAX_ROTAMERS), 3, 3
+form.shape = (0, int(MAX_ROTAMERS)), 3, 3
 form.contiguous = True
 ctx.compute()
 
