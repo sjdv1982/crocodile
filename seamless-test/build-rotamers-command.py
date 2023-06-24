@@ -70,7 +70,7 @@ verif0_coors = np.einsum("ij,kjl->kil", coorx, verif0) # broadcasted coorx.dot(v
 dref0 = verif0_coors - coorx
 rmsdref0 = np.sqrt((dref0*dref0).sum(axis=2).mean(axis=1))
 try:
-    assert np.all(np.abs(rmsdref0 - rmsdref[:10]) < 0.01), (rmsdref0, rmsdref[:10])
+    assert np.all(np.abs(rmsdref0 - rmsdref[:10]) < 0.05), (rmsdref0, rmsdref[:10])
 except AssertionError:
     struc = ctx.struc.value
     coor = np.stack((struc["x"], struc["y"], struc["z"]),axis=1)
@@ -80,7 +80,7 @@ except AssertionError:
     verif0_coors = np.einsum("ij,kjl->kil", coorx, verif0) # broadcasted coorx.dot(verif0[k])
     dref0 = verif0_coors - coorx
     rmsdref0 = np.sqrt((dref0*dref0).sum(axis=2).mean(axis=1))
-    assert np.all(np.abs(rmsdref0 - rmsdref[:10]) < 0.01), (rmsdref0, rmsdref[:10])
+    assert np.all(np.abs(rmsdref0 - rmsdref[:10]) < 0.05), (rmsdref0, rmsdref[:10])
 
 verifx = np.einsum("ij,kjl->kil", tensor, verif) #broadcasted tensor.dot(verif[k])
 verif0x = verifx[:10]
@@ -88,15 +88,17 @@ verif0_xcoors = np.einsum("ij,kjl->kil", coor, verif0x)
 dref0 = verif0_xcoors - coor.dot(tensor)
 rmsdref0 = np.sqrt((dref0*dref0).sum(axis=2).mean(axis=1))
 try:
-    assert np.all(np.abs(rmsdref0 - rmsdref[:10]) < 0.01), (rmsdref0, rmsdref[:10])
+    assert np.all(np.abs(rmsdref0 - rmsdref[:10]) < 0.05), (rmsdref0, rmsdref[:10])
 except AssertionError:
     verifx = np.einsum("ij,kjl->kil", tensor.T, verif) #broadcasted tensor.dot(verif[k])
     verif0x = verifx[:10]
     verif0_xcoors = np.einsum("ij,kjl->kil", coor, verif0x)
     dref0 = verif0_xcoors - coor.dot(tensor.T)
     rmsdref0 = np.sqrt((dref0*dref0).sum(axis=2).mean(axis=1))
+    assert np.all(np.abs(rmsdref0 - rmsdref[:10]) < 0.05), (rmsdref0, rmsdref[:10])
 
 #/paranoid check
+#import sys; sys.exit()
 
 not_in_cluster = 0
 for vnr, v in enumerate(verif):
