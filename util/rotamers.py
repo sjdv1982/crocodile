@@ -8,7 +8,8 @@ def get_structure_tensor(struc):
     scalevec = s/np.sqrt(len(struc))
     tensor = wt.T
     if np.linalg.det(tensor) < 0:
-        tensor[2,2] *= -1
+        tensor[2] *= -1
+    assert np.linalg.det(tensor) > 0.999
     return tensor, scalevec
 
 
