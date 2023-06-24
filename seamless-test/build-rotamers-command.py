@@ -61,25 +61,25 @@ m = ctx.modules.rotamers.module
 rmsdref = np.sqrt(m.get_msd(verif, refe=None, scalevec=scalevec))
 
 # paranoid check
-if scalevec[2] > 0.2:
-    struc = ctx.struc.value
-    coor = np.stack((struc["x"], struc["y"], struc["z"]),axis=1)
-    coor -= coor.mean(axis=0)
-    coorx = coor.dot(tensor)
-    verif0 = verif[:10]
-    verif0_coors = np.einsum("ij,kjl->kil", coorx, verif0) # broadcasted coorx.dot(verif0[k])
-    dref0 = verif0_coors - coorx
-    rmsdref0 = np.sqrt((dref0*dref0).sum(axis=2).mean(axis=1))
-    assert np.all(np.abs(rmsdref0 - rmsdref[:10]) < 0.2), (rmsdref0, rmsdref[:10])
+struc = ctx.struc.value
+coor = np.stack((struc["x"], struc["y"], struc["z"]),axis=1)
+coor -= coor.mean(axis=0)
+coorx = coor.dot(tensor)
+verif0 = verif[:10]
+verif0_coors = np.einsum("ij,kjl->kil", coorx, verif0) # broadcasted coorx.dot(verif0[k])
+dref0 = verif0_coors - coorx
+rmsdref0 = np.sqrt((dref0*dref0).sum(axis=2).mean(axis=1))
+assert np.all(np.abs(rmsdref0 - rmsdref[:10]) < 0.01), (rmsdref0, rmsdref[:10])
 
-    verifx = np.einsum("ij,kjl->kil", tensor, verif) #broadcasted tensor.dot(verif[k])
-    verif0x = verifx[:10]
-    verif0_xcoors = np.einsum("ij,kjl->kil", coor, verif0x)
-    dref0 = verif0_xcoors - coor.dot(tensor)
-    rmsdref0 = np.sqrt((dref0*dref0).sum(axis=2).mean(axis=1))
-    assert np.all(np.abs(rmsdref0 - rmsdref[:10]) < 0.2), (rmsdref0, rmsdref[:10])
+verifx = np.einsum("ij,kjl->kil", tensor, verif) #broadcasted tensor.dot(verif[k])
+verif0x = verifx[:10]
+verif0_xcoors = np.einsum("ij,kjl->kil", coor, verif0x)
+dref0 = verif0_xcoors - coor.dot(tensor)
+rmsdref0 = np.sqrt((dref0*dref0).sum(axis=2).mean(axis=1))
+assert np.all(np.abs(rmsdref0 - rmsdref[:10]) < 0.01), (rmsdref0, rmsdref[:10])
 
 #/paranoid check
+import sys; sys.exit()
 
 not_in_cluster = 0
 for vnr, v in enumerate(verif):
