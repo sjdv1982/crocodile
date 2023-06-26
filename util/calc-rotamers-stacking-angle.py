@@ -21,6 +21,8 @@ rings = {
     "DT": ["C6", "C5", "C7", "N3", "O2", "O4"],
     "U": ["N1", "C2", "N3", "C4", "C5", "C6"],
     "RU": ["N1", "C2", "N3", "C4", "C5", "C6"],
+    "C": ["N1", "C2", "N3", "C4", "C5", "C6"],
+    "RC": ["N1", "C2", "N3", "C4", "C5", "C6"],
     "G": ["N1", "C2", "N3", "C4", "C5", "C6", "N7", "C8", "N9"],
     "RG": ["N1", "C2", "N3", "C4", "C5", "C6", "N7", "C8", "N9"],
     
@@ -65,17 +67,21 @@ def calc_plane(coor):
     v, s, wt = svd(covar)
     return wt[2] / norm(wt[2])
 
+def calc_planes(coor):
+    coor = coor - coor.mean(axis=1)[:, None]
+    covar = np.einsum("ijk,ijl->ikl", coor, coor) #coor[i].T.dot(coor[i])
+    v, s, wt = svd(covar)
+    return wt[:, 2, :] / norm(wt[:, 2, :], axis=-1)[..., None]
+
 prot_coor = select_ring(prot, prot_chain, prot_resid)
 nuc_coor = select_ring(rotamer_template, rotamer_template_chain, rotamer_template_resid)
 
 prot_plane = calc_plane(prot_coor)
 
-# inefficient, but will do for now...
-for rotamer_matrix in rotamer_matrices:
-    nuc_coor_rotamer = nuc_coor.dot(rotamer_matrix)
-    nuc_plane_rotamer = calc_plane(nuc_coor_rotamer)
-    nrm = norm(np.cross(prot_plane, nuc_plane_rotamer))
-    if nrm > 1:
-        nrm = 1
-    angle = np.arcsin(nrm)
-    print(angle)
+nuc_coor_rotamers = np.einsum('ij,kjl->kil', nuc_coor, rotamer_matrices) #broadcasted nuc_coor.dot(rotamer_matrices[k])
+nuc_plane_rotamers = calc_planes(nuc_coor_rotamers)
+nrm = norm(np.cross(prot_plane, nuc_plane_rotamers), axis=1)
+nrm = np.minimum(nrm, 1)
+angle = np.arcsin(nrm)
+for a in angle:
+    print(a)
