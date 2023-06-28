@@ -1,4 +1,3 @@
-
 import os, sys
 import numpy as np
 from nefertiti.functions.parse_pdb import parse_pdb
