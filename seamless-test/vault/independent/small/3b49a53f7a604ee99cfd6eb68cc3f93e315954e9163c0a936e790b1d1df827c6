@@ -1,0 +1,27 @@
+{
+  "compiled_code": {
+    "celltype": "text",
+    "io": "input"
+  },
+  "debug_": {
+    "celltype": "bool",
+    "io": "input"
+  },
+  "header_": {
+    "as": "header",
+    "celltype": "text",
+    "io": "input"
+  },
+  "lang": {
+    "celltype": "str",
+    "io": "input"
+  },
+  "main_module": {
+    "celltype": "plain",
+    "io": "input"
+  },
+  "result": {
+    "celltype": "mixed",
+    "io": "output"
+  }
+}

@@ -1,0 +1,9 @@
+def gen_moduledict_generic(module_code, module_type, language, dependencies):
+    result = {
+        "type": module_type,
+        "language": language,
+        "code": module_code,
+    }
+    if len(dependencies):
+        result["dependencies"] = dependencies
+    return result

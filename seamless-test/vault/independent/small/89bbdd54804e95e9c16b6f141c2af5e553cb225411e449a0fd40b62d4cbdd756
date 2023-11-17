@@ -1,0 +1,26 @@
+{
+  "input_name": {
+    "celltype": "str",
+    "io": "input"
+  },
+  "input_schema": {
+    "celltype": "plain",
+    "io": "input"
+  },
+  "inputpins": {
+    "celltype": "mixed",
+    "io": "input"
+  },
+  "result": {
+    "celltype": "mixed",
+    "io": "output"
+  },
+  "result_name": {
+    "celltype": "str",
+    "io": "input"
+  },
+  "result_schema": {
+    "celltype": "plain",
+    "io": "input"
+  }
+}
