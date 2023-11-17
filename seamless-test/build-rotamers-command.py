@@ -60,10 +60,11 @@ verif = gen_rotations(100000)
 m = ctx.modules.rotamers.module
 rmsdref = np.sqrt(m.get_msd(verif, refe=None, scalevec=scalevec))
 
-# paranoid check; assumes tensor is identity
+# paranoid check
 struc = ctx.struc.value
 coor = np.stack((struc["x"], struc["y"], struc["z"]),axis=1)
 coor -= coor.mean(axis=0)
+coor = np.dot(coor, tensor)
 verif0 = verif[:10]
 verif0_coors = np.einsum("ij,kjl->kil", coor, verif0) # broadcasted coor.dot(verif0[k])
 dref0 = verif0_coors - coor
