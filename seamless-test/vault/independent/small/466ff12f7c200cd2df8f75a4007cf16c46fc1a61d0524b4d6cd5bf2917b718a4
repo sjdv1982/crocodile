@@ -1,0 +1,6 @@
+def parse_pdb(pdb):
+    result = parse_pdb_module.parse_pdb(pdb)
+    result["x"] -= result["x"].mean()
+    result["y"] -= result["y"].mean()
+    result["z"] -= result["z"].mean()
+    return result

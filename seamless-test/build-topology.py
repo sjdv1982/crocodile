@@ -35,7 +35,11 @@ ctx.translate()
 
 ctx.pdb = Cell("text")
 def parse_pdb(pdb):
-    return parse_pdb_module.parse_pdb(pdb)
+    result = parse_pdb_module.parse_pdb(pdb)
+    result["x"] -= result["x"].mean()
+    result["y"] -= result["y"].mean()
+    result["z"] -= result["z"].mean()
+    return result
 
 ctx.parse_pdb = parse_pdb
 ctx.parse_pdb.pdb = ctx.pdb
