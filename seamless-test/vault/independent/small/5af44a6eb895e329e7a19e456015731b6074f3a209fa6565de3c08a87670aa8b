@@ -1,9 +1,0 @@
-{
-  "properties": {
-    "n": {
-      "minimum": 0,
-      "type": "integer"
-    }
-  },
-  "type": "object"
-}
