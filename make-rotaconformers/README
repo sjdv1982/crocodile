@@ -1,13 +1,15 @@
 The make-rotaconformers script uses Seamless to builds rotaconformer library from a trinucleotide fragment library in a reproducible manner.
 
+In essence, make-rotaconformers enumerates all possible rotations of each conformer within a library.
+
 The script comes in two versions. The make-rotaconformers.py version submits all jobs inside the main Python code.
 The make-rotaconformers-nested.py wraps the job submissions themselves inside a job (i.e. a Seamless transformation).
 This second version will complete instantly is the computation is already done, and the code is also better annotated.
 
-In essence, make-rotaconformers enumerates all possible rotations of each conformer within a library.
-
 The "results/" directory contains the Seamless (SHA3-256) checksums of all rotaconformers generated from a
 of a fragment library with the following checksums:
+
+Input fragment library:
 
 filename                md5sum                              Seamless checksum (SHA3-256)
 AAA-lib-conformer.npy   1bf6b16f250093766144e5b4e25ed347    7731a9b7900127450d14b4ee466c3a82657c54ba1eb46009c0755bee3d9af6a7
@@ -21,6 +23,6 @@ CCC-lib-conformer.npy   157dc95daa7fdd0090a420615d6eb6a1    7748c7f1478c5178ba3e
 
 (the files can be found in /home/sdevries/fragment-library on the MBI cluster)
 
-This fragment library was built with ProtNAff (https://github.com/isaureCdB/ProtNAff) 
+This input fragment library was built with ProtNAff (https://github.com/isaureCdB/ProtNAff) 
 ProtNAff (commit 1ef1d6324303a0b0aa41445c2214d17abe1bfe35) was run on its bundled list of PDB codes "all.list", 
 and then the ProtNAff script "build-library.sh" was run.
