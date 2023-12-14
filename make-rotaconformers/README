@@ -1,0 +1,26 @@
+The make-rotaconformers script uses Seamless to builds rotaconformer library from a trinucleotide fragment library in a reproducible manner.
+
+The script comes in two versions. The make-rotaconformers.py version submits all jobs inside the main Python code.
+The make-rotaconformers-nested.py wraps the job submissions themselves inside a job (i.e. a Seamless transformation).
+This second version will complete instantly is the computation is already done, and the code is also better annotated.
+
+In essence, make-rotaconformers enumerates all possible rotations of each conformer within a library.
+
+The "results/" directory contains the Seamless (SHA3-256) checksums of all rotaconformers generated from a
+of a fragment library with the following checksums:
+
+filename                md5sum                              Seamless checksum (SHA3-256)
+AAA-lib-conformer.npy   1bf6b16f250093766144e5b4e25ed347    7731a9b7900127450d14b4ee466c3a82657c54ba1eb46009c0755bee3d9af6a7
+AAC-lib-conformer.npy   e56560973e1f4873ed0f71fc649e881d    5cc3fdccaf6f85eabf775e97d1992843201f1c7b62275e82bd40f5e4379515ce
+ACA-lib-conformer.npy   9d580b31efac9d5918ec0129985d4b82    9debd509a103c4601c7aa136ba3aeda75318b4e0937372c25c76d749c1e1741c
+ACC-lib-conformer.npy   c54f89b093ebc68fc0e17f65a66f6b3e    c87c1a99026a67cde1d26901ca9e7636b9ab59599a7b65bca6688dc7e53f60b8
+CAA-lib-conformer.npy   1328bfb4dad419ce7aedee3b19dce83b    4d9921212f08117524da32c7e84f9fabec32319f811cea5b435ac92d4813704b
+CAC-lib-conformer.npy   ba5663ae0b6683fc7ad5284a2d8d19b7    7c61a0f6b0ab488d3bc8294ffc04b131729e5b8ab3efa590b6059ed24c4bfb53
+CCA-lib-conformer.npy   d3f75d2888c05e0040ecf30503aed91c    dcdd1d6c4128ef78df0fca663cc29f5c87a4e4ca5e5903c4294d2344e097b022
+CCC-lib-conformer.npy   157dc95daa7fdd0090a420615d6eb6a1    7748c7f1478c5178ba3ee9826df1c3c88fddbe6777f73f4031954975c7d35aa2
+
+(the files can be found in /home/sdevries/fragment-library on the MBI cluster)
+
+This fragment library was built with ProtNAff (https://github.com/isaureCdB/ProtNAff) 
+ProtNAff (commit 1ef1d6324303a0b0aa41445c2214d17abe1bfe35) was run on its bundled list of PDB codes "all.list", 
+and then the ProtNAff script "build-library.sh" was run.
