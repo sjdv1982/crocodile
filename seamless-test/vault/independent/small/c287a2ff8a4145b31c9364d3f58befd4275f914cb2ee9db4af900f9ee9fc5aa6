@@ -1,7 +1,0 @@
-def get_structure_tensor(struc):
-    import numpy as np
-    coor = np.zeros((len(struc), 3))
-    coor[:, 0] = struc["x"]
-    coor[:, 1] = struc["y"]
-    coor[:, 2] = struc["z"]
-    return build_rotamers.get_structure_tensor(coor)
