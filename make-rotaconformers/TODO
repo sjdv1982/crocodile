@@ -1,0 +1,2 @@
+The ProtNAff conformers are not aligned on their structure tensors. It must be verified that this can be done correctly. There were some numerical stability problems before! 
+See TODO.py. Perhaps integrate this into ProtNAff? or postmultiply the rotamers with this. Integrate with verify-coverage.py
