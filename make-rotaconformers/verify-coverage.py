@@ -1,6 +1,10 @@
 
  # Verify that the rotamer clusters cover all of rotational space
-# TODO: 
+
+# TODO: see file TODO, must be done first!!!
+
+
+
 # - input a conformer index, 
 # - load the input conformer library, get the conformer
 # - load the result file JSON, get the checksum, load the rotamers
