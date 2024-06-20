@@ -285,8 +285,14 @@ result_checksums = stage2_main(
 # Write result file
 ############################################
 
+from seamless import Buffer
+buf = Buffer(result_checksums, "plain")
+buf.save(result_file)
+
+'''
 from seamless.core.protocol.serialize import serialize_sync as serialize
 
 with open(result_file, "wb") as f:
     f.write(serialize(result_checksums, "plain"))
+'''
 print("Result file written")
