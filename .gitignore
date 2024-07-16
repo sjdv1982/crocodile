@@ -13,3 +13,5 @@ seamless-test/vault/dependent/big/*
 
 # 4. Backups of the Seamless graph. Comment out the following line to put them under version control
 #seamless-test/graph/*.seamless.bak*
+
+test/trinuc/*-template-ppdb.npy
