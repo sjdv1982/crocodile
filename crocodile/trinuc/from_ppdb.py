@@ -58,6 +58,7 @@ def from_ppdb(
     rna: bool,
     ignore_unknown: bool,
     ignore_missing: bool,
+    ignore_reordered: bool,
     rmsd_margin: float,
 ):
     """Converts a parsed nucleic acid PDB chain
@@ -69,7 +70,8 @@ def from_ppdb(
       where "natoms" is the same as the length of the template PDB for that sequence.
 
     If ignore_unknown, unknown residue names (i.e. non-canonical bases) are ignored, else raise an exception
-    If ignore_missing, ignore nucleotides with missing heavy atoms
+    If ignore_missing, ignore nucleotides with missing template atoms, else raise an exception
+    If ignore_reordered, ignore nucleotides with extra atoms or a different atom order than the template, else reorder them
 
     All conformers are fitted, a conformer is kept if its fitting RMSD is smaller than sqrt(best-fitting-RMSD**2 + margin**2)
 
@@ -112,14 +114,19 @@ def from_ppdb(
         tri_inds_offset = [(v[0] - first, v[1] - first) for v in tri_inds]
 
         tri_natoms = tri_inds[2][1] - tri_inds[0][0]
-        if tri_natoms != len(template):
+        if tri_natoms < len(template):
             if ignore_missing:
                 continue
             raise ValueError(
                 f"""Trinucleotide '{triseq}' starting at residue {first_atom['resid']}: 
 Incorrect number of atoms {tri_natoms}, while template has {len(template)} atoms"""
             )
-        elif tri_inds_offset != template_inds[triseq]:
+        elif any(
+            [
+                (x[1] - x[0] < y[1] - y[0])
+                for x, y in zip(tri_inds_offset, template_inds[triseq])
+            ]
+        ):
             if ignore_missing:
                 continue
             raise ValueError(
@@ -147,13 +154,16 @@ Trinucleotide has layout {tri_inds_offset}, while template has {template_inds[tr
                         break
                 else:
                     break
-        if len(atom_indices) != tri_natoms:
+        if len(atom_indices) < tri_natoms:
             if ignore_missing:
                 continue
             raise ValueError(
                 f"""Trinucleotide '{triseq}' starting at residue {first_atom['resid']}: 
-Trinucleotide has the same number of atoms as the template, but they are differently named"""
+Trinucleotide has at least the same number of atoms as the template, but they are differently named"""
             )
+        elif ignore_reordered:
+            if atom_indices != list(range(baseline_ppdb, baseline_ppdb + tri_natoms)):
+                continue
         ppdb_trinuc = ppdb[atom_indices]
         refe = np.stack(
             (ppdb_trinuc["x"], ppdb_trinuc["y"], ppdb_trinuc["z"]), axis=-1
@@ -255,12 +265,18 @@ def main():
     parser.add_argument(
         "--ignore-missing",
         action="store_true",
-        help="Ignore nucleotides with missing heavy atoms",
+        help="Ignore nucleotides with missing atoms",
+    )
+
+    parser.add_argument(
+        "--ignore-reordered",
+        action="store_true",
+        help="Ignore nucleotides with additional or reordered atoms",
     )
 
     parser.add_argument(
         "--margin",
-        default=1.6,
+        default=1.8,
         help="""Store not only the best-fitting conformer, but all conformers up to 'margin' beyond that.
         To be precise, a conformer is kept if its fitting RMSD is smaller than sqrt(best-fitting-RMSD**2 + margin**2)""",
     )
@@ -309,6 +325,7 @@ def main():
         rna=args.rna,
         ignore_unknown=args.ignore_unknown,
         ignore_missing=args.ignore_missing,
+        ignore_reordered=args.ignore_reordered,
         rmsd_margin=args.margin,
     )
 

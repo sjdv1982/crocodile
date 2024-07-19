@@ -2,18 +2,20 @@ import itertools
 import sys
 import numpy as np
 from nefertiti.functions.parse_pdb import atomic_dtype
-from crocodile.trinuc import trinuc_dtype
+from crocodile.trinuc import trinuc_dtype, trinuc_roco_dtype
+
 
 def err(msg):
     print(msg, file=sys.stderr)
     exit(1)
+
 
 def to_ppdb(
     trinuc_array: np.ndarray,
     *,
     template_pdbs: dict[str, np.ndarray],
     trinuc_conformer_library: dict[str, np.ndarray],
-    rna: bool
+    rna: bool,
 ):
     from crocodile.trinuc.from_ppdb import ppdb2nucseq
 
@@ -23,18 +25,27 @@ def to_ppdb(
         resinds[seq] = resind
 
     result0 = {}
-    counts = {}
 
-    for trinuc in trinuc_array:
-        first_resid = trinuc["first_resid"]
-        if first_resid not in counts:
-            counts[first_resid] = 0
-        counts[first_resid] += 1
-        baseline_resid = 10 * (first_resid - 1) + 1
-        if counts[first_resid] <= 26:
-            chain = chr(ord('A') + counts[first_resid] - 1)
+    only_one = len(np.unique(trinuc_array["first_resid"])) == len(trinuc_array)
+
+    counts = {}
+    for trinuc_nr, trinuc in enumerate(trinuc_array):
+        if only_one:
+            baseline_resid = 1
+            c = trinuc_nr % 52
         else:
-            chain = chr(ord('a') + counts[first_resid] - 1 - 26)
+            first_resid = trinuc["first_resid"]
+            baseline_resid = 10 * (first_resid - 1) + 1
+            if first_resid not in counts:
+                counts[first_resid] = 0
+            counts[first_resid] += 1
+            c = counts[first_resid]
+        if c > 52:
+            continue
+        if c <= 26:
+            chain = chr(ord("A") + c - 1)
+        else:
+            chain = chr(ord("a") + c - 1 - 26)
         seq = trinuc["sequence"].decode()
         tmpl = template_pdbs[seq].copy()
         tmpl["chain"] = chain
@@ -42,8 +53,11 @@ def to_ppdb(
             nuc_start, nuc_end = resinds[seq][nuc]
             tmpl[nuc_start:nuc_end]["resid"] = baseline_resid + nuc
         conf = trinuc_conformer_library[seq][trinuc["conformer"]]
-        conf4 = np.concatenate((conf, np.ones(len(conf))[:, None]), axis=1)
-        coors = conf4.dot(trinuc["matrix"])[:, :3]
+        if trinuc.dtype == trinuc_roco_dtype:
+            coors = conf.dot(trinuc["rotation_matrix"]) + trinuc["offset"]
+        else:
+            conf4 = np.concatenate((conf, np.ones(len(conf))[:, None]), axis=1)
+            coors = conf4.dot(trinuc["matrix"])[:, :3]
         tmpl["x"] = coors[:, 0]
         tmpl["y"] = coors[:, 1]
         tmpl["z"] = coors[:, 2]
@@ -53,11 +67,14 @@ def to_ppdb(
 
     subresults = []
     for chain in sorted(result0.keys()):
+        #  pylint: disable=E1123
         subresult = np.concatenate(result0[chain], dtype=atomic_dtype)
         subresults.append(subresult)
+    #  pylint: disable=E1123
     result = np.concatenate(subresults, dtype=atomic_dtype)
     result["index"] = np.arange(len(result)) + 1
     return result
+
 
 def main():
     import argparse
@@ -84,8 +101,6 @@ def main():
         required=True,
     )
 
-    # TODO: rotaconformers (optional), grid spacing (optional)
-
     parser.add_argument(
         "--output",
         help="Output file for the result, in parsed PDB numpy format",
@@ -108,8 +123,7 @@ def main():
 
     trinuc_array_file = args.trinuc
     trinuc_array = np.load(trinuc_array_file)
-    if trinuc_array.dtype != trinuc_dtype:
-        # TODO: rotaconf+trans, rotaconf+grid
+    if trinuc_array.dtype not in (trinuc_dtype, trinuc_roco_dtype):
         err(f"'{trinuc_array_file}' does not contain a trinucleotide fitted array")
 
     templates = {}
@@ -138,7 +152,7 @@ def main():
         trinuc_array,
         template_pdbs=templates,
         trinuc_conformer_library=conformers,
-        rna=args.rna
+        rna=args.rna,
     )
 
     np.save(args.output, result)
