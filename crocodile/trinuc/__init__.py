@@ -11,6 +11,19 @@ trinuc_dtype = np.dtype(
     align=True,
 )
 
+
+trinuc_roco_dtype = np.dtype(
+    [
+        ("first_resid", np.uint16),
+        ("sequence", "S3"),
+        ("conformer", np.uint16),
+        ("rotation_matrix", np.float64, (3, 3)),
+        ("offset", np.float64, 3),
+        ("rmsd", np.float32),
+    ],
+    align=True,
+)
+
 _basic_mapping_rna = {k: k for k in ("A", "C", "G", "U")}
 _basic_mapping_dna = {k: k for k in ("A", "C", "G", "T")}
 _basic_mapping_rna.update({"R" + k: k for k in ("A", "C", "G", "U")})
