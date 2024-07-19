@@ -70,4 +70,9 @@ python $NEFERTITI/functions/write_pdb.py 1B7F-trinuc-grid-fit-pdb.npy 1B7F-trinu
 
 python ../../crocodile/trinuc/best_fit.py 1B7F-trinuc-grid-fit.npy > 1B7F-trinuc-roco-grid-fit.rmsd
 
+python ../../crocodile/trinuc/get_overlap_rmsd.py 1B7F-trinuc-grid-fit.npy --rna \
+    --templates XXX-template-ppdb.npy \
+    --conformers  ~/data/work/ProtNAff/database/trilib/XXX-lib-conformer.npy \
+    > 1B7F-overlap.rmsd
+
 
