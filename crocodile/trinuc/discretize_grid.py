@@ -38,7 +38,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "trinuc",
-        help="A trinucleotide fitted array of conformers, translated rotaconformers or rotaconformers on a grid, in numpy format",
+        help="A trinucleotide fitted array of translated rotaconformers, in numpy format",
     )
     parser.add_argument(
         "gridspacing",
