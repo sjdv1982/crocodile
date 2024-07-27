@@ -16,6 +16,7 @@ def get_overlap_rmsd(
     template_pdbs: dict[str, np.ndarray],
     trinuc_conformer_library: dict[str, np.ndarray],
     rna: bool,
+    return_indices: bool = False
 ):
     from crocodile.trinuc.from_ppdb import ppdb2nucseq
 
@@ -44,22 +45,39 @@ def get_overlap_rmsd(
         coors = conf.dot(trinuc["rotation_matrix"]) + trinuc["offset"]
         coordinates[trinuc["first_resid"]] = coors
 
-    trinucs = {trinuc["first_resid"]: trinuc for trinuc in trinuc_array}
-    result_dtype = np.dtype(
-        [
-            ("first_resid", np.uint16),
-            ("fit1", np.float32),
-            ("fit2", np.float32),
-            ("overlap_rmsd", np.float32),
-        ]
-    )
-    results = np.empty(len(trinucs), result_dtype)
-    nresults = 0
-    for resid, trinuc in trinucs.items():
+    if return_indices:
+        trinuc_inds = dict(zip(trinuc_array["first_resid"], range(len(trinuc_array))))
+        results = np.empty(len(trinuc_array), np.float32)
+        results_ind = np.empty((len(trinuc_array), 2), np.uint16)
+        nresults = 0
+    else:
+        trinucs = {trinuc["first_resid"]: trinuc for trinuc in trinuc_array}
+        result_dtype = np.dtype(
+            [
+                ("first_resid", np.uint16),
+                ("conformer1", np.uint16),
+                ("conformer2", np.uint16),
+                ("fit1", np.float32),
+                ("fit2", np.float32),
+                ("overlap_rmsd", np.float32),
+            ]
+        )
+        results = np.empty(len(trinucs), result_dtype)
+        nresults = 0
+
+    for trinuc_ind, trinuc in enumerate(trinuc_array):
+        resid = trinuc["first_resid"]
         seq = trinuc["sequence"].decode()
-        next_trinuc = trinucs.get(resid + 1)
-        if next_trinuc is None:
-            continue
+        if return_indices:
+            next_trinuc_ind = trinuc_inds.get(resid + 1)
+            if next_trinuc_ind is None:
+                continue
+            next_trinuc = trinuc_array[next_trinuc_ind]
+        else:
+            next_trinuc = trinucs.get(resid + 1)
+            if next_trinuc is None:
+                continue
+
         next_seq = next_trinuc["sequence"].decode()
 
         coors, next_coors = coordinates[resid], coordinates[resid + 1]
@@ -68,13 +86,22 @@ def get_overlap_rmsd(
 
         assert len(pre_coors) == len(post_coors), resid
         overlap_rmsd = np.sqrt(((pre_coors - post_coors) ** 2).sum(axis=1).mean(axis=0))
-        result = results[nresults]
-        result["first_resid"] = resid
-        result["fit1"] = trinuc["rmsd"]
-        result["fit2"] = next_trinuc["rmsd"]
-        result["overlap_rmsd"] = overlap_rmsd
+        if return_indices:
+            results[nresults] = overlap_rmsd
+            results_ind[nresults] = trinuc_ind, next_trinuc_ind
+        else:
+            result = results[nresults]
+            result["first_resid"] = resid
+            result["conformer1"] = trinuc["conformer"]
+            result["conformer2"] = next_trinuc["conformer"]
+            result["fit1"] = trinuc["rmsd"]
+            result["fit2"] = next_trinuc["rmsd"]
+            result["overlap_rmsd"] = overlap_rmsd
         nresults += 1
-    return results[:nresults]
+    if return_indices:
+        return results[:nresults], results_ind[:nresults]
+    else:
+        return results[:nresults]
 
 
 def main():
