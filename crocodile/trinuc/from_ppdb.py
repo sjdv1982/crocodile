@@ -60,6 +60,7 @@ def from_ppdb(
     ignore_missing: bool,
     ignore_reordered: bool,
     rmsd_margin: float,
+    rmsd_soft_max: float = None
 ):
     """Converts a parsed nucleic acid PDB chain
     into a list of superimposed trinucleotides.
@@ -74,6 +75,8 @@ def from_ppdb(
     If ignore_reordered, ignore nucleotides with extra atoms or a different atom order than the template, else reorder them
 
     All conformers are fitted, a conformer is kept if its fitting RMSD is smaller than sqrt(best-fitting-RMSD**2 + margin**2)
+
+    For conformers with fitting RMSDs beyond rmsd_soft_max, they are only kept if they are the best fitting
 
     NOTE: validation of the data must have been done before!
     """
@@ -178,8 +181,10 @@ Trinucleotide has at least the same number of atoms as the template, but they ar
 
         best_rmsd = rmsds.min()
         max_rmsd = np.sqrt(best_rmsd**2 + rmsd_margin**2)
-
-        best_conformers0 = np.where(rmsds < max_rmsd)[0]
+        if rmsd_soft_max:
+            max_rmsd = min(max_rmsd, rmsd_soft_max)
+            max_rmsd = max(max_rmsd, best_rmsd)
+        best_conformers0 = np.where(rmsds <= max_rmsd)[0]
         best_rmsds = rmsds[best_conformers0]
         best_rotmatrices = rotmatrices[best_conformers0]
         best_conformers = sorted_indices[best_conformers0]

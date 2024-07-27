@@ -9,6 +9,7 @@ import itertools
 import os
 import sys
 import numpy as np
+from tqdm import tqdm
 from nefertiti.functions.parse_pdb import atomic_dtype
 from crocodile.trinuc import trinuc_dtype, trinuc_roco_dtype
 import json
@@ -87,8 +88,9 @@ def fit_roco(
     for n, trinuc_array in enumerate(trinuc_arrays):
         for pos, fitted_trinuc in enumerate(trinuc_array):
             triseq = fitted_trinuc["sequence"].decode()
+            triseq2 = triseq.replace("U", "C").replace("G", "A")
             conformer = int(fitted_trinuc["conformer"])
-            key = (triseq, conformer)
+            key = (triseq2, conformer)
             if key not in roco:
                 roco[key] = []
             roco[key].append((n, pos))
@@ -99,15 +101,15 @@ def fit_roco(
         results.append(np.empty(100, dtype=trinuc_roco_dtype))
         nresults.append(0)
 
-    for key in roco:  # pylint: disable=consider-using-dict-items
-        triseq, conformer = key
-        conformer_coordinates = trinuc_conformer_library[triseq][conformer]
-        matrix_file = trinuc_rotaconformer_library[triseq][conformer]
+    for key in tqdm(roco):  # pylint: disable=consider-using-dict-items
+        triseq2, conformer = key
+        matrix_file = trinuc_rotaconformer_library[triseq2][conformer]
         matrices = np.load(matrix_file)
-        template = template_pdbs2[triseq]
         for n, pos in roco[key]:
             trinuc = trinuc_arrays[n][pos]
-            assert trinuc["sequence"] == triseq.encode()
+            triseq = trinuc["sequence"].decode()
+            template = template_pdbs2[triseq]
+            conformer_coordinates = trinuc_conformer_library[triseq][conformer]
             if prefilter_rmsd_min is not None and trinuc["rmsd"] < prefilter_rmsd_min:
                 continue
             if prefilter_rmsd_max is not None and trinuc["rmsd"] > prefilter_rmsd_max:
