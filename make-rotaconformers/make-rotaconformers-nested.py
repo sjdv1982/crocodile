@@ -15,8 +15,7 @@ import numpy as np
 import pathlib
 
 import seamless
-from seamless import transformer
-from seamless.highlevel import Context, Module
+from seamless import transformer, Buffer
 
 currdir = os.path.dirname(os.path.abspath(__file__))
 CROCODILE_DIR = pathlib.Path(currdir).parent
@@ -28,13 +27,17 @@ result_file = sys.argv[2]
 conformers = np.load(conformers_file)
 
 # If the purpose of this script is to verify that the computation is done,
-# then there is no need to contact an assistant
-seamless.delegate(level=3)
+# then there is no need to contact an assistant.
+### seamless.delegate(level=3)
 
 # The script can also be used to do the entire calculation.
-# In that case, comment the previous line and uncomment the next one:
+# In that case, comment the previous line and uncomment the next ones:
 
-### seamless.delegate(block_local=False)
+seamless.delegate()  ###
+seamless.config.unblock_local()  ###
+# (In addition, decrease NCONTEXTS in the code below )
+
+from seamless.workflow import Context, Module
 
 ############################################
 # Preparation 1: generate random rotations
@@ -59,15 +62,7 @@ def gen_random_rotations(n):
 # Execute in plain Python, and calculate checksum
 random_rotations = gen_random_rotations(MAX_ROTATIONS)
 
-
-def numpy2checksum(arr):
-    from seamless.core.protocol.serialize import serialize_sync as serialize
-    from seamless import calculate_checksum
-
-    return calculate_checksum(serialize(arr, "binary"), hex=True)
-
-
-print(random_rotations.shape, numpy2checksum(random_rotations))
+print(random_rotations.shape, Buffer(random_rotations, "binary").get_checksum())
 
 # Execute in Seamless (either remotely via the assistant, or retrieve the result from the database)
 gen_random_rotations = transformer(
@@ -76,7 +71,7 @@ gen_random_rotations = transformer(
 tf = gen_random_rotations(MAX_ROTATIONS)
 tf.compute()
 random_rotations_checksum = tf.checksum
-assert random_rotations_checksum is not None
+assert random_rotations_checksum
 print("random rotations checksum:", random_rotations_checksum)
 
 ############################################
@@ -102,7 +97,7 @@ ctx.compute()
 ############################################
 
 
-@transformer
+@transformer(local=True)
 def get_structure_tensors(conformers):
     result = []
     for coor in conformers:
@@ -115,7 +110,9 @@ def get_structure_tensors(conformers):
 get_structure_tensors.modules.build_rotamers = ctx.modules.build_rotamers
 get_structure_tensors.modules.rotamers = ctx.modules.rotamers
 
-tensors = get_structure_tensors(conformers)
+print("Calculating structure tensors locally...")
+###tensors = get_structure_tensors(conformers) ###
+tensors = get_structure_tensors(conformers[100:200])  ###
 print(len(tensors))
 
 ############################################
@@ -200,6 +197,12 @@ del ctx
 # Stage 2: The actual clustering of the random rotations in C++
 # Seamless C++ transformers must be built as a workflow graph
 # using a Seamless Context.
+#
+# This stage must explicitly be done with delegation.
+# The inputs (in particular, the random numbers),
+# must be recomputed from their arguments.
+# For security/performance reasons,
+#  local execution does not do this automatically, but assistants do.
 ############################################
 
 
@@ -209,10 +212,11 @@ def stage2_main(tensors, pre_analyses, build_rotamers_code, random_rotations_che
     import seamless
     import numpy as np
 
-    from seamless.highlevel import Context, Cell, Transformer
+    from seamless.workflow import Context, Cell, Transformer
 
     MAX_ROTAMERS = 1e6
     NCONTEXTS = 100
+    NCONTEXTS = 5  ###
     nconformers = len(tensors)
 
     print("Set up main context")
@@ -286,13 +290,14 @@ result_checksums = stage2_main(
 ############################################
 
 from seamless import Buffer
+
 buf = Buffer(result_checksums, "plain")
 buf.save(result_file)
 
-'''
+"""
 from seamless.core.protocol.serialize import serialize_sync as serialize
 
 with open(result_file, "wb") as f:
     f.write(serialize(result_checksums, "plain"))
-'''
+"""
 print("Result file written")
