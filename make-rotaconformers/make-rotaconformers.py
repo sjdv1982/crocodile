@@ -5,8 +5,11 @@ import pathlib
 from tqdm import tqdm
 
 import seamless
-from seamless import transformer
-from seamless.highlevel import Context, Module, Transformer, Cell
+from seamless import transformer, Buffer
+
+seamless.delegate()
+
+from seamless.workflow import Context, Module, Transformer, Cell
 
 currdir = os.path.dirname(os.path.abspath(__file__))
 CROCODILE_DIR = pathlib.Path(currdir).parent
@@ -15,8 +18,6 @@ MAX_ROTATIONS = 10000000
 
 conformers_file = sys.argv[1]
 conformers = np.load(conformers_file)
-
-seamless.delegate()
 
 
 def gen_random_rotations(n):
@@ -36,15 +37,7 @@ def gen_random_rotations(n):
 
 random_rotations = gen_random_rotations(MAX_ROTATIONS)
 
-
-def numpy2checksum(arr):
-    from seamless.core.protocol.serialize import serialize_sync as serialize
-    from seamless import calculate_checksum
-
-    return calculate_checksum(serialize(arr, "binary"), hex=True)
-
-
-print(random_rotations.shape, numpy2checksum(random_rotations))
+print(random_rotations.shape, Buffer(random_rotations, "binary").get_checksum())
 
 gen_random_rotations = transformer(
     gen_random_rotations, scratch=True, return_transformation=True
@@ -52,7 +45,7 @@ gen_random_rotations = transformer(
 tf = gen_random_rotations(MAX_ROTATIONS)
 tf.compute()
 random_rotations_checksum = tf.checksum
-assert random_rotations_checksum is not None
+assert random_rotations_checksum
 print("random rotations checksum:", random_rotations_checksum)
 
 ctx = Context()
@@ -69,7 +62,7 @@ ctx.modules.rotamers.mount(str(CROCODILE_DIR.joinpath("util", "rotamers.py")), "
 ctx.compute()
 
 
-@transformer
+@transformer(local=True)
 def get_structure_tensors(conformers):
     result = []
     for coor in conformers:
@@ -82,6 +75,7 @@ def get_structure_tensors(conformers):
 get_structure_tensors.modules.build_rotamers = ctx.modules.build_rotamers
 get_structure_tensors.modules.rotamers = ctx.modules.rotamers
 
+print("Calculating structure tensors locally...")
 tensors = get_structure_tensors(conformers)
 # tensors = tensors[:10]
 # conformers = conformers[:10]
