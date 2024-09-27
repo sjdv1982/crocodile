@@ -28,13 +28,14 @@ conformers = np.load(conformers_file)
 
 # If the purpose of this script is to verify that the computation is done,
 # then there is no need to contact an assistant.
-### seamless.delegate(level=3)
+seamless.delegate(level=3)
 
 # The script can also be used to do the entire calculation.
 # In that case, comment the previous line and uncomment the next ones:
 
-seamless.delegate()  ###
-seamless.config.unblock_local()  ###
+### seamless.delegate()
+### seamless.config.unblock_local()
+
 # (In addition, decrease NCONTEXTS in the code below )
 
 from seamless.workflow import Context, Module
@@ -181,16 +182,20 @@ def stage1_pre_analysis(tensors):
     ok = True
     pre_analysis_results = []
     for n, pre_analysis in enumerate(pre_analyses):
-        cs  = pre_analysis.checksum
+        cs = pre_analysis.checksum
         if cs.value is None:
-            print(f"Failed pre-analysis {n}, transformation checksum {pre_analysis.as_checksum()}")
+            print(
+                f"Failed pre-analysis {n}, transformation checksum {pre_analysis.as_checksum()}"
+            )
             ok = False
         else:
             v = pre_analysis.value
             if v is not None:
                 pre_analysis_results.append(v)
             else:
-                print(f"Cannot get value for pre-analysis {n}, transformation checksum {pre_analysis.as_checksum()}, result checksum {pre_analysis.checksum}")
+                print(
+                    f"Cannot get value for pre-analysis {n}, transformation checksum {pre_analysis.as_checksum()}, result checksum {pre_analysis.checksum}"
+                )
                 ok = False
     if not ok:
         exit(1)
