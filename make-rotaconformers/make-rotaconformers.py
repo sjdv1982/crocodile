@@ -131,12 +131,24 @@ with tqdm(total=len(conformers), desc="Pre-analysis") as progress_bar:
     with seamless.multi.TransformationPool(1000) as pool:
         pre_analyses = pool.apply(pre_analyze, len(conformers), callback=callback)
 
-if any([pre_analysis.checksum is None for pre_analysis in pre_analyses]):
-    exit(1)
-
-print("Collect pre-analysis results...")
-pre_analyses = [pre_analysis.value for pre_analysis in pre_analyses]
-print("...done")
+    print("Collect pre-analysis results...")
+    ok = True
+    pre_analysis_results = []
+    for n, pre_analysis in enumerate(pre_analyses):
+        cs  = pre_analysis.checksum
+        if cs.value is None:
+            print(f"Failed pre-analysis {n}, transformation checksum {pre_analysis.as_checksum()}")
+            ok = False
+        else:
+            v = pre_analysis.value
+            if v is not None:
+                pre_analysis_results.append(v)
+            else:
+                print(f"Cannot get value for pre-analysis {n}, transformation checksum {pre_analysis.as_checksum()}, result checksum {pre_analysis.checksum}")
+                ok = False
+    if not ok:
+        exit(1)
+    print("... done")
 
 del ctx
 

@@ -111,8 +111,7 @@ get_structure_tensors.modules.build_rotamers = ctx.modules.build_rotamers
 get_structure_tensors.modules.rotamers = ctx.modules.rotamers
 
 print("Calculating structure tensors locally...")
-###tensors = get_structure_tensors(conformers) ###
-tensors = get_structure_tensors(conformers[100:200])  ###
+tensors = get_structure_tensors(conformers)
 print(len(tensors))
 
 ############################################
@@ -178,13 +177,25 @@ def stage1_pre_analysis(tensors):
         with seamless.multi.TransformationPool(1000) as pool:
             pre_analyses = pool.apply(pre_analyze, nconformers, callback=callback)
 
-    if any([pre_analysis.checksum is None for pre_analysis in pre_analyses]):
-        exit(1)
-
     print("Collect pre-analysis results...")
-    pre_analyses = [pre_analysis.value for pre_analysis in pre_analyses]
-    print("...done")
-    return pre_analyses
+    ok = True
+    pre_analysis_results = []
+    for n, pre_analysis in enumerate(pre_analyses):
+        cs  = pre_analysis.checksum
+        if cs.value is None:
+            print(f"Failed pre-analysis {n}, transformation checksum {pre_analysis.as_checksum()}")
+            ok = False
+        else:
+            v = pre_analysis.value
+            if v is not None:
+                pre_analysis_results.append(v)
+            else:
+                print(f"Cannot get value for pre-analysis {n}, transformation checksum {pre_analysis.as_checksum()}, result checksum {pre_analysis.checksum}")
+                ok = False
+    if not ok:
+        exit(1)
+    print("... done")
+    return pre_analysis_results
 
 
 stage1_pre_analysis.modules.build_rotamers = ctx.modules.build_rotamers
@@ -216,7 +227,6 @@ def stage2_main(tensors, pre_analyses, build_rotamers_code, random_rotations_che
 
     MAX_ROTAMERS = 1e6
     NCONTEXTS = 100
-    NCONTEXTS = 5  ###
     nconformers = len(tensors)
 
     print("Set up main context")
