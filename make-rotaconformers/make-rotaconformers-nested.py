@@ -33,10 +33,19 @@ seamless.delegate(level=3)
 # The script can also be used to do the entire calculation.
 # In that case, comment the previous line and uncomment the next ones:
 
-### seamless.delegate()
-### seamless.config.unblock_local()
+# seamless.delegate()
+# seamless.config.unblock_local()
 
 # (In addition, decrease NCONTEXTS in the code below )
+
+# Note that local computation (level 3 delegation) works up to stage 1
+#  ***but not for stage 2***
+# All seamless tools to execute computations do a fingertip on the inputs.
+#   These tools include: all assistants, seamless-run-transformation, seamless-fingertip
+# However, for performance reasons, local execution does not do this,
+#  which means that the scratch on the random rotations will lead to a cachemiss error.
+# If you really need to do local computation/testing stage 2 of the workflow, do:
+# seamless.config.fingertip_all = True
 
 from seamless.workflow import Context, Module
 
@@ -244,6 +253,10 @@ def stage2_main(tensors, pre_analyses, build_rotamers_code, random_rotations_che
     tf.scalevec = ctx.scalevec
     tf.hierarchy = ctx.hierarchy
     tf.language = "cpp"
+
+    # For some reason, this is necessary for some deployments but not all
+    tf.link_options = ["-lm"]
+
     ctx.translate()
     tf.inp.example.random_rotations = np.zeros((5, 3, 3))
     tf.inp.example.scalevec = np.zeros(3)
