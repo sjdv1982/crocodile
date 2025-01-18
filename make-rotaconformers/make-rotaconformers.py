@@ -135,16 +135,20 @@ with tqdm(total=len(conformers), desc="Pre-analysis") as progress_bar:
     ok = True
     pre_analysis_results = []
     for n, pre_analysis in enumerate(pre_analyses):
-        cs  = pre_analysis.checksum
+        cs = pre_analysis.checksum
         if cs.value is None:
-            print(f"Failed pre-analysis {n}, transformation checksum {pre_analysis.as_checksum()}")
+            print(
+                f"Failed pre-analysis {n}, transformation checksum {pre_analysis.as_checksum()}"
+            )
             ok = False
         else:
             v = pre_analysis.value
             if v is not None:
                 pre_analysis_results.append(v)
             else:
-                print(f"Cannot get value for pre-analysis {n}, transformation checksum {pre_analysis.as_checksum()}, result checksum {pre_analysis.checksum}")
+                print(
+                    f"Cannot get value for pre-analysis {n}, transformation checksum {pre_analysis.as_checksum()}, result checksum {pre_analysis.checksum}"
+                )
                 ok = False
     if not ok:
         exit(1)
