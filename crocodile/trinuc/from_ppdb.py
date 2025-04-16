@@ -159,7 +159,7 @@ def from_ppdb(
       one for each trinucleotide sequence,
       where "natoms" is the same as the length of the template PDB for that sequence.
 
-    Trinuncleotides that are non-contiguous in residue numbering are skipped.
+    Trinucleotides that are non-contiguous in residue numbering are skipped.
     If ignore_unknown, unknown residue names (i.e. non-canonical bases) are ignored, else raise an exception
     If ignore_missing, ignore nucleotides with missing template atoms, else raise an exception
     If ignore_reordered, ignore nucleotides with extra atoms or a different atom order than the template, else reorder them
@@ -167,6 +167,8 @@ def from_ppdb(
     All conformers are fitted, a conformer is kept if its fitting RMSD is smaller than sqrt(best-fitting-RMSD**2 + margin**2)
 
     For conformers with fitting RMSDs beyond rmsd_soft_max, they are only kept if they are the best fitting
+
+    NOTE: conformer indices start at zero!
 
     NOTE: validation of the data must have been done before!
     """
