@@ -2,7 +2,7 @@
 This version of the workflow script runs the job submissions themselves inside a transformation
 The result of these transformations (stage1 and stage2) can be easily verified, allowing
 an already completed workflow to return its result instantly.
-The main make-rotaconformers version may take more than half an hour to verify 
+The main make-rotaconformers version may take more than half an hour to verify
   that the workflow has run to completion,
 
 In addition, this version takes an output file argument where the result checksums will be written
@@ -28,13 +28,13 @@ conformers = np.load(conformers_file)
 
 # If the purpose of this script is to verify that the computation is done,
 # then there is no need to contact an assistant.
-seamless.delegate(level=3)
+###seamless.delegate(level=3)
 
 # The script can also be used to do the entire calculation.
 # In that case, comment the previous line and uncomment the next ones:
 
-# seamless.delegate()
-# seamless.config.unblock_local()
+seamless.delegate()
+seamless.config.unblock_local()
 
 # (In addition, decrease NCONTEXTS in the code below )
 
@@ -69,10 +69,12 @@ def gen_random_rotations(n):
     return result
 
 
+"""
 # Execute in plain Python, and calculate checksum
 random_rotations = gen_random_rotations(MAX_ROTATIONS)
 
 print(random_rotations.shape, Buffer(random_rotations, "binary").get_checksum())
+"""
 
 # Execute in Seamless (either remotely via the assistant, or retrieve the result from the database)
 gen_random_rotations = transformer(
@@ -176,7 +178,7 @@ def stage1_pre_analysis(tensors):
 
         def callback(n, pre_analysis):
             progress_bar.update(1)
-            if pre_analysis.checksum is None:
+            if pre_analysis.checksum is None or pre_analysis.checksum.value is None:
                 print(
                     f"""Failure for conformer {n}:
         status: {pre_analysis.status}
@@ -192,7 +194,7 @@ def stage1_pre_analysis(tensors):
     pre_analysis_results = []
     for n, pre_analysis in enumerate(pre_analyses):
         cs = pre_analysis.checksum
-        if cs.value is None:
+        if cs is None or cs.value is None:
             print(
                 f"Failed pre-analysis {n}, transformation checksum {pre_analysis.as_checksum()}"
             )
@@ -240,7 +242,7 @@ def stage2_main(tensors, pre_analyses, build_rotamers_code, random_rotations_che
     from seamless.workflow import Context, Cell, Transformer
 
     MAX_ROTAMERS = 1e6
-    NCONTEXTS = 100
+    NCONTEXTS = 50
     nconformers = len(tensors)
 
     print("Set up main context")
@@ -283,7 +285,7 @@ def stage2_main(tensors, pre_analyses, build_rotamers_code, random_rotations_che
 
     result_checksums = [None] * nconformers
     print("Setting up context pool")
-    with seamless.multi.ContextPool(ctx, NCONTEXTS) as pool:
+    with seamless.multi.ContextPool(ctx, NCONTEXTS, show_progress=True) as pool:
         print("...done")
         with tqdm(total=nconformers, desc="Build rotamers") as progress_bar:
 
@@ -295,9 +297,11 @@ def stage2_main(tensors, pre_analyses, build_rotamers_code, random_rotations_che
                 progress_bar.update(1)
                 tf = ctx.build_rotamers
                 result_checksum = tf.result.checksum
-                if result_checksum is None:
+                if result_checksum is None or result_checksum.value is None:
                     print("No result", conformer, tf.status, tf.exception)
-                result_checksums[conformer] = result_checksum
+                    result_checksums[conformer] = None
+                else:
+                    result_checksums[conformer] = result_checksum.value
 
             pool.apply(setup_func, nconformers, result_func)
     if any([result_checksum is None for result_checksum in result_checksums]):
@@ -322,10 +326,4 @@ from seamless import Buffer
 buf = Buffer(result_checksums, "plain")
 buf.save(result_file)
 
-"""
-from seamless.core.protocol.serialize import serialize_sync as serialize
-
-with open(result_file, "wb") as f:
-    f.write(serialize(result_checksums, "plain"))
-"""
 print("Result file written")

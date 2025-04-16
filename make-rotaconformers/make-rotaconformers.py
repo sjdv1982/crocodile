@@ -17,6 +17,7 @@ CROCODILE_DIR = pathlib.Path(currdir).parent
 MAX_ROTATIONS = 10000000
 
 conformers_file = sys.argv[1]
+result_file = sys.argv[2]
 conformers = np.load(conformers_file)
 
 
@@ -80,6 +81,7 @@ tensors = get_structure_tensors(conformers)
 # tensors = tensors[:10]
 # conformers = conformers[:10]
 print(len(tensors))
+nconformers = len(tensors)
 
 
 @transformer(return_transformation=True)
@@ -108,7 +110,7 @@ def do_pre_analysis(rsize, rmsd, scalevec, maxcostfrac):
 do_pre_analysis.modules.build_rotamers = ctx.modules.build_rotamers
 do_pre_analysis.modules.rotamers = ctx.modules.rotamers
 
-with tqdm(total=len(conformers), desc="Pre-analysis") as progress_bar:
+with tqdm(total=nconformers, desc="Pre-analysis") as progress_bar:
 
     def pre_analyze(conformer):
         return do_pre_analysis(
@@ -120,7 +122,7 @@ with tqdm(total=len(conformers), desc="Pre-analysis") as progress_bar:
 
     def callback(n, pre_analysis):
         progress_bar.update(1)
-        if pre_analysis.checksum is None:
+        if pre_analysis.checksum.value is None:
             print(
                 f"""Failure for conformer {n}:
     status: {pre_analysis.status}
@@ -128,8 +130,9 @@ with tqdm(total=len(conformers), desc="Pre-analysis") as progress_bar:
     logs: {pre_analysis.logs}"""
             )
 
+    # TODO: POOLSIZE
     with seamless.multi.TransformationPool(1000) as pool:
-        pre_analyses = pool.apply(pre_analyze, len(conformers), callback=callback)
+        pre_analyses = pool.apply(pre_analyze, nconformers, callback=callback)
 
     print("Collect pre-analysis results...")
     ok = True
@@ -167,6 +170,9 @@ tf.random_rotations = ctx.random_rotations
 tf.scalevec = ctx.scalevec
 tf.hierarchy = ctx.hierarchy
 tf.language = "cpp"
+# For some reason, this is necessary for some deployments but not all
+tf.link_options = ["-lm"]
+
 ctx.translate()
 tf.inp.example.random_rotations = np.zeros((5, 3, 3))
 tf.inp.example.scalevec = np.zeros(3)
@@ -192,21 +198,35 @@ ctx.translate()
 ctx.random_rotations.set_checksum(random_rotations_checksum)
 ctx.compute(10)
 
-contexts = []
+result_checksums = [None] * nconformers
 
 NCONTEXTS = 100
 print("Setting up context pool")
 with seamless.multi.ContextPool(ctx, NCONTEXTS) as pool:
     print("...done")
-    with tqdm(total=len(conformers), desc="Build rotamers") as progress_bar:
+    with tqdm(total=nconformers, desc="Build rotamers") as progress_bar:
 
         def setup_func(ctx, conformer):
             ctx.scalevec = tensors[conformer][1]
-            ctx.hierarchy = pre_analyses[conformer]["hierarchy"]
+            ctx.hierarchy = pre_analysis_results[conformer]["hierarchy"]
 
         def result_func(ctx, conformer):
             progress_bar.update(1)
             tf = ctx.build_rotamers
-            print("Result", conformer, tf.result.checksum, tf.status, tf.exception)
+            result_checksum = tf.result.checksum.value
+            if result_checksum is None:
+                print("No result", conformer, tf.status, tf.exception)
+            result_checksums[conformer] = result_checksum
 
-        pool.apply(setup_func, len(conformers), result_func)
+        pool.apply(setup_func, nconformers, result_func)
+if any([result_checksum is None for result_checksum in result_checksums]):
+    raise RuntimeError
+############################################
+# Write result file
+############################################
+
+from seamless import Buffer
+
+buf = Buffer(result_checksums, "plain")
+buf.save(result_file)
+print("Result file written")
