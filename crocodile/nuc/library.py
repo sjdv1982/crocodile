@@ -3,7 +3,7 @@ from typing import NamedTuple, Optional
 from scipy.spatial.transform import Rotation
 import numpy as np
 
-from .util.from_ppdb import ppdb2nucseq
+from .util.ppdb import ppdb2nucseq
 from .util.mutate import mutate
 
 
@@ -70,10 +70,6 @@ class Library(NamedTuple):
         else:
             first = self.rotaconformers_index[conformer - 1]
         return self.rotaconformers[first:last]
-
-    def rotamer_index_uint16(self) -> bool:
-        """Returns if all rotamer indices for all conformers can fit in an uint16"""
-        return np.diff(self.rotaconformers_index, prepend=0).max() < 2**16
 
     def _validate(self):
         if self.conformer_mask is not None:
@@ -170,6 +166,15 @@ class LibraryFactory:
         Memory will only be freed if all created libraries have been destroyed."""
         self.rotaconformers = None
         self.rotaconformers_index = None
+
+    def rotamer_index_uint16(self) -> bool:
+        """Returns if all rotamer indices for all conformers can fit in an uint16"""
+        if self.rotaconformers_file is None:
+            raise RuntimeError("No rotaconformers")
+        if self.rotaconformers is None:
+            raise RuntimeError("Rotaconformers must be loaded first")
+
+        return np.diff(self.rotaconformers_index, prepend=0).max() < 2**16
 
     def create(
         self,
