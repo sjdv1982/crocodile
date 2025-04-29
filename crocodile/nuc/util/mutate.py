@@ -27,6 +27,25 @@ def mutate_AtoG(input, output):
     output[12] = atom13
 
 
+def mutate_AtoG_array(input, output):
+    """mutates A to G in output, array-wise"""
+    assert input.shape[-2:] == (22, 3), input.shape
+    assert output.shape[-2:] == (23, 3), output.shape
+    v1 = input[:, 11] - input[:, 8]
+    v2 = input[:, 13] - input[:, 8]
+    v3 = np.cross(v1, v2, axis=1)
+    v2a = np.cross(v3, v1, axis=1)
+    x = v1 / np.linalg.norm(v1, axis=1)[:, None]
+    y = v2a / np.linalg.norm(v2a, axis=1)[:, None]
+    z = v3 / np.linalg.norm(v3, axis=1)[:, None]
+    mat = np.stack((x, y, z), axis=1)
+
+    output[:, :12] = input[:, :12]
+    output[:, 13:] = input[:, 12:]
+    atom13 = np.einsum("i,jik->jk", atom13_G, mat) + input[:, 8]
+    output[:, 12] = atom13
+
+
 rna_sizes = {"A": 22, "C": 20, "G": 23, "U": 20}
 
 
@@ -72,6 +91,7 @@ def mutate(arr: np.ndarray, input_sequence: str, output_sequence: str) -> np.nda
         inp = arr[None, :, :]
     else:
         inp = arr
+
     outp = np.empty((inp.shape[0], output_totsize, 3), inp.dtype)
 
     offset = 0
@@ -80,18 +100,17 @@ def mutate(arr: np.ndarray, input_sequence: str, output_sequence: str) -> np.nda
     for nuc1, nuc2 in zip(input_sequence, output_sequence):
         size = rna_sizes[nuc1]
         output_size = rna_sizes[nuc2]
-        for frag in range(len(inp)):
-            curr_inp = inp[frag, offset : offset + size]
-            curr_outp = outp[frag, output_offset : output_offset + output_size]
-            if nuc1 != nuc2:
-                if (nuc1, nuc2) not in (("A", "G"), ("C", "U")):
-                    err(f"Cannot mutate {nuc1} to {nuc2}")
-                if (nuc1, nuc2) == ("A", "G"):
-                    mutate_AtoG(curr_inp, curr_outp)
-                elif (nuc1, nuc2) == ("C", "U"):
-                    curr_outp[:] = curr_inp  # equivalent atoms in the same order
-            else:
-                curr_outp[:] = curr_inp  # no change
+        curr_inp = inp[:, offset : offset + size]
+        curr_outp = outp[:, output_offset : output_offset + output_size]
+        if nuc1 != nuc2:
+            if (nuc1, nuc2) not in (("A", "G"), ("C", "U")):
+                err(f"Cannot mutate {nuc1} to {nuc2}")
+            if (nuc1, nuc2) == ("A", "G"):
+                mutate_AtoG_array(curr_inp, curr_outp)
+            elif (nuc1, nuc2) == ("C", "U"):
+                curr_outp[:] = curr_inp  # equivalent atoms in the same order
+        else:
+            curr_outp[:] = curr_inp  # no change
         offset += size
         output_offset += output_size
 

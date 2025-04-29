@@ -48,7 +48,7 @@ class Reference:
         sequence = []
         resids = []
         coordinates = []
-        for n in range(len(monoseq) - 1):
+        for n in range(len(monoseq)):
             first, last = indices[n]
             first_atom = ppdb[first]
             resid0 = first_atom["resid"]
@@ -155,10 +155,7 @@ Duplicate atom {atom_name}"""
             raise ValueError("Not a valid fragment")
         return resids
 
-    def get_coordinates(self, fragment_position: int, fraglen: int):
-        """Get the coordinates belonging to fragment X, where X is the fragment position.
-
-        If the fragment is not a valid fragment, raise ValueError"""
+    def _get_pos(self, fragment_position, fraglen):
         offset = self._resids[0]
         first_resid = offset + fragment_position - 1
         try:
@@ -169,8 +166,22 @@ Duplicate atom {atom_name}"""
             range(first_resid, first_resid + fraglen)
         ):
             raise ValueError("Not a valid fragment")
+        return pos
+
+    def get_coordinates(self, fragment_position: int, fraglen: int):
+        """Get the coordinates belonging to fragment X, where X is the fragment position.
+
+        If the fragment is not a valid fragment, raise ValueError"""
+        pos = self._get_pos(fragment_position, fraglen)
         coordinates = self._coordinates[pos : pos + fraglen]
         if fraglen == 1:
             return coordinates[0].copy()
         else:
             return np.concatenate(coordinates)
+
+    def get_sequence(self, fragment_position: int, fraglen: int):
+        """Get the sequence belonging to fragment X, where X is the fragment position.
+
+        If the fragment is not a valid fragment, raise ValueError"""
+        pos = self._get_pos(fragment_position, fraglen)
+        return self.sequence[pos : pos + fraglen]
