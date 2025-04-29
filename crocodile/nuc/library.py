@@ -1,10 +1,25 @@
+import gc
+import json
 import os
-from typing import NamedTuple, Optional
+from typing import NamedTuple, Optional, Any
 from scipy.spatial.transform import Rotation
 import numpy as np
 
 from .util.ppdb import ppdb2nucseq
 from .util.mutate import mutate
+
+
+def load_clustering(master_clustering, nconf):
+    assert master_clustering[0] == nconf
+    pos = nconf + 1
+    clustering_ind_ind = master_clustering[1:pos]
+    n_clustering_ind = clustering_ind_ind.sum()
+    clustering_ind = master_clustering[pos : n_clustering_ind + pos]
+    pos = n_clustering_ind + pos
+    n_clustering = clustering_ind.sum()
+    assert n_clustering == len(master_clustering) - pos
+    clustering = master_clustering[pos:] - 1
+    return clustering, clustering_ind, clustering_ind_ind
 
 
 class Library(NamedTuple):
@@ -42,6 +57,9 @@ class Library(NamedTuple):
     rotaconformers_index: Optional[np.ndarray]
         Optional: for each conformer, the index of the first rotamer in the rotaconformer array
         Use get_rotamers() to get the rotamers for a specific conformer.
+
+    rotaconformers_clustering:
+        Optional: the 3A clustering of the rotamers for each conformer
     """
 
     coordinates: np.ndarray
@@ -58,6 +76,8 @@ class Library(NamedTuple):
 
     rotaconformers_index: Optional[np.ndarray]
 
+    rotaconformers_clustering: Optional[Any]
+
     def get_rotamers(self, conformer: int):
         """Get all discrete rotamers for a conformer"""
         if conformer < 0 or conformer >= len(self.coordinates):
@@ -70,6 +90,18 @@ class Library(NamedTuple):
         else:
             first = self.rotaconformers_index[conformer - 1]
         return self.rotaconformers[first:last]
+
+    def get_rotamer_clusters(self, conformer: int):
+        first, last = self.rotaconformers_clustering[2][conformer : conformer + 2]
+        cluster_indices = self.rotaconformers_clustering[1][first : last + 1]
+        clustering = self.rotaconformers_clustering[0][
+            cluster_indices[0] : cluster_indices[-1]
+        ]
+
+        return (
+            cluster_indices - cluster_indices[0],
+            clustering,
+        )
 
     def _validate(self):
         if self.conformer_mask is not None:
@@ -100,6 +132,8 @@ class LibraryFactory:
         rotaconformers_index_file=None,
         rotaconformers_extension_file=None,
         rotaconformers_extension_index_file=None,
+        rotaconformers_clustering_file=None,
+        rotaconformers_extension_clustering_file=None,
     ):
         """Factory class for nucleotide libraries.
         Instantiated by LibraryDirectory.load.
@@ -119,16 +153,30 @@ class LibraryFactory:
         self.extension_coordinates = extension_coordinates
         self.extension_origins = extension_origins
         self.rotaconformers = None
+        self.rotaconformers_clustering = None
         self.rotaconformers_index = None
         self.rotaconformers_file = rotaconformers_file
         self.rotaconformers_index_file = rotaconformers_index_file
         self.rotaconformers_extension_file = rotaconformers_extension_file
         self.rotaconformers_extension_index_file = rotaconformers_extension_index_file
+        self.rotaconformers_clustering_file = rotaconformers_clustering_file
+        self.rotaconformers_extension_clustering_file = (
+            rotaconformers_extension_clustering_file
+        )
+        if (
+            rotaconformers_clustering_file is not None
+            and rotaconformers_extension_file is not None
+        ):
+            assert rotaconformers_extension_clustering_file is not None
 
     def load_rotaconformers(self) -> None:
         """Load the rotamers from file into memory.
         Convert them into rotation matrix form.
-        This is expensive, both in terms of disk I/O and in terms of memory.
+        This is expensive, both in terms of disk I/O and in terms of memory,
+          and takes ~10s of computation.
+
+        If clustering has been defined, load that as well.
+        This is also expensive in terms of disk I/O and takes ~10s of computation.
 
         If the rotaconformers have been loaded already, do nothing."""
         if self.rotaconformers is not None:
@@ -155,7 +203,57 @@ class LibraryFactory:
                 rotaconformers_index = np.concatenate(
                     (rotaconformers_index, rotaconformers_extension_index + offset)
                 )
+
         rotaconformers = Rotation.from_rotvec(rotaconformers0).as_matrix()
+
+        clustering = None
+        if self.rotaconformers_clustering_file is not None:
+            master_clustering = np.load(self.rotaconformers_clustering_file)
+            clustering, clustering_ind, clustering_ind_ind = load_clustering(
+                master_clustering, len(self.primary_coordinates)
+            )
+            assert len(clustering_ind_ind) == len(self.primary_coordinates)
+            ncoor = len(self.primary_coordinates)
+
+            if self.extension_coordinates is not None and clustering is not None:
+                master_clustering = np.load(
+                    self.rotaconformers_extension_clustering_file
+                )
+                ext_clustering, ext_clustering_ind, ext_clustering_ind_ind = (
+                    load_clustering(master_clustering, len(self.extension_coordinates))
+                )
+                assert len(ext_clustering_ind_ind) == len(self.extension_coordinates)
+                clustering = np.concatenate(
+                    (clustering, ext_clustering),
+                )
+                clustering_ind = np.concatenate((clustering_ind, ext_clustering_ind))
+                clustering_ind_ind = np.concatenate(
+                    (clustering_ind_ind, ext_clustering_ind_ind)
+                )
+
+                ncoor += len(self.extension_coordinates)
+                assert len(clustering_ind_ind) == ncoor
+
+            assert len(clustering) == len(rotaconformers)
+
+            cs_clustering_ind = np.zeros(len(clustering_ind) + 1, int)
+            cs_clustering_ind[1:] = np.cumsum(clustering_ind.astype(int))
+            clustering_ind = cs_clustering_ind
+
+            cs_clustering_ind_ind = np.zeros(len(clustering_ind_ind) + 1, int)
+            cs_clustering_ind_ind[1:] = np.cumsum(clustering_ind_ind.astype(int))
+            clustering_ind_ind = cs_clustering_ind_ind
+
+            for conf in range(ncoor):
+                i1, i2 = clustering_ind_ind[conf : conf + 2]
+                f1, f2 = clustering_ind[i1], clustering_ind[i2]
+                if conf == 0:
+                    assert f1 == 0
+                else:
+                    assert f1 == rotaconformers_index[conf - 1]
+                assert f2 == rotaconformers_index[conf]
+
+        self.rotaconformers_clustering = clustering, clustering_ind, clustering_ind_ind
 
         self.rotaconformers = rotaconformers
         self.rotaconformers_index = rotaconformers_index
@@ -166,6 +264,7 @@ class LibraryFactory:
         Memory will only be freed if all created libraries have been destroyed."""
         self.rotaconformers = None
         self.rotaconformers_index = None
+        gc.collect()
 
     def rotamer_index_uint16(self) -> bool:
         """Returns if all rotamer indices for all conformers can fit in an uint16"""
@@ -219,7 +318,7 @@ class LibraryFactory:
         if pdb_code is not None and self.replacement_origins is not None:
             to_replace = []
             for confnr, ori in enumerate(self.replacement_origins):
-                if ori == pdb_code:
+                if ori == pdb_code.lower():
                     to_replace.append(confnr)
             if to_replace:
                 primary_coordinates = primary_coordinates.copy()
@@ -233,7 +332,7 @@ class LibraryFactory:
             if pdb_code is not None and self.extension_origins is not None:
                 to_replace = []
                 for confnr, ori in enumerate(self.extension_origins):
-                    if ori == pdb_code:
+                    if ori == pdb_code.lower():
                         to_replace.append(confnr)
                 if to_replace:
                     offset = len(primary_coordinates)
@@ -275,9 +374,12 @@ class LibraryFactory:
 
         rotaconformers = None
         rotaconformers_index = None
+        rotaconformers_clustering = None
         if with_rotaconformers:
             rotaconformers = self.rotaconformers
             rotaconformers_index = self.rotaconformers_index
+            rotaconformers_clustering = self.rotaconformers_clustering
+
         result = Library(
             sequence=self.sequence,
             coordinates=coordinates,
@@ -286,6 +388,7 @@ class LibraryFactory:
             conformer_mapping=conformer_mapping,
             rotaconformers=rotaconformers,
             rotaconformers_index=rotaconformers_index,
+            rotaconformers_clustering=rotaconformers_clustering,
         )
         result._validate()
         return result
@@ -304,8 +407,10 @@ class LibraryDirectory:
         extension_origin_filepattern=None,
         rotaconformers_filepattern=None,
         rotaconformers_index_filepattern=None,
+        rotaconformers_clustering_filepattern=None,
         rotaconformers_extension_filepattern=None,
         rotaconformers_extension_index_filepattern=None,
+        rotaconformers_extension_clustering_filepattern=None,
     ):
         """
         Nucleotide fragment library directory. Must contain A/C conformer arrays.
@@ -337,9 +442,13 @@ class LibraryDirectory:
         - rotaconformers_index_filepattern: file pattern for the rotaconformer indices.
         These are, for each conformer, the index of the first rotamer in the rotaconformer array,
 
+        - rotaconformers_clustering_filepattern: file pattern for the internal 3A clustering of the rotaconformers.
+
         - rotaconformers_extension_filepattern: file pattern for array of discrete rotamers for the extension library
 
         - rotaconformers_extension_index_filepattern: file pattern for rotamers for the extension library
+
+        - rotaconformers_extension_clustering_filepattern: file pattern for the internal 3A clustering of the rotaconformers.
         """
         self.fraglen = fraglen
         self.filepattern = filepattern
@@ -349,10 +458,16 @@ class LibraryDirectory:
         self.extension_filepattern = extension_filepattern
         self.extension_origin_filepattern = extension_origin_filepattern
         self.rotaconformers_filepattern = rotaconformers_filepattern
+        self.rotaconformers_clustering_filepattern = (
+            rotaconformers_clustering_filepattern
+        )
         self.rotaconformers_index_filepattern = rotaconformers_index_filepattern
         self.rotaconformers_extension_filepattern = rotaconformers_extension_filepattern
         self.rotaconformers_extension_index_filepattern = (
             rotaconformers_extension_index_filepattern
+        )
+        self.rotaconformers_extension_clustering_filepattern = (
+            rotaconformers_extension_clustering_filepattern
         )
 
     def load(
@@ -363,7 +478,13 @@ class LibraryDirectory:
         with_extension=False,
         with_replacement=False,
         with_rotaconformers=False,
+        with_clustering=False,
+        loaded_libraries: dict[str, LibraryFactory] = None,
     ) -> LibraryFactory:
+        """Load a library, returning it as a LibraryFactory.
+
+        Optionally, a cache of previously loaded LibraryFactory instances
+        may be provided, to prevent redundant loading from disk"""
         assert len(sequence) == self.fraglen
 
         if with_extension:
@@ -379,6 +500,11 @@ class LibraryDirectory:
             if with_extension:
                 assert self.rotaconformers_extension_filepattern is not None
                 assert self.rotaconformers_extension_index_filepattern is not None
+        if with_clustering:
+            assert with_rotaconformers
+            assert self.rotaconformers_clustering_filepattern is not None
+            if with_extension:
+                assert self.rotaconformers_extension_clustering_filepattern is not None
 
         template_sequence = ppdb2nucseq(template, rna=self.rna)
         if template_sequence != sequence:
@@ -388,13 +514,19 @@ class LibraryDirectory:
         x = "X" * self.fraglen
         baseUT = "U" if self.rna else "T"
         seq0 = sequence.replace("G", "A").replace(baseUT, "C")
-        primary_coordinates0 = np.load(self.filepattern.replace(x, seq0))
+        if loaded_libraries is not None and seq0 in loaded_libraries:
+            primary_coordinates0 = loaded_libraries[seq0].primary_coordinates
+        else:
+            primary_coordinates0 = np.load(self.filepattern.replace(x, seq0))
         primary_coordinates = mutate(primary_coordinates0, seq0, sequence)
         extension_coordinates = None
         if with_extension:
-            extension_coordinates0 = np.load(
-                self.extension_filepattern.replace(x, seq0)
-            )
+            if loaded_libraries is not None and seq0 in loaded_libraries:
+                extension_coordinates0 = loaded_libraries[seq0].extension_coordinates
+            else:
+                extension_coordinates0 = np.load(
+                    self.extension_filepattern.replace(x, seq0)
+                )
             extension_coordinates = mutate(extension_coordinates0, seq0, sequence)
         replacement_coordinates = None
         replacement_origins = None
@@ -430,6 +562,8 @@ class LibraryDirectory:
         rotaconformers_index_file = None
         rotaconformers_extension_file = None
         rotaconformers_extension_index_file = None
+        rotaconformers_clustering_file = None
+        rotaconformers_extension_clustering_file = None
         if with_rotaconformers:
             rotaconformers_file = self.rotaconformers_filepattern.replace(x, seq0)
             assert os.path.exists(rotaconformers_file)
@@ -446,6 +580,17 @@ class LibraryDirectory:
                     self.rotaconformers_extension_index_filepattern.replace(x, seq0)
                 )
                 assert os.path.exists(rotaconformers_extension_index_file)
+            if with_clustering:
+                rotaconformers_clustering_file = (
+                    self.rotaconformers_clustering_filepattern.replace(x, seq0)
+                )
+                assert os.path.exists(rotaconformers_clustering_file)
+                rotaconformers_extension_clustering_file = (
+                    self.rotaconformers_extension_clustering_filepattern.replace(
+                        x, seq0
+                    )
+                )
+                assert os.path.exists(rotaconformers_extension_clustering_file)
 
         return LibraryFactory(
             sequence,
@@ -460,4 +605,6 @@ class LibraryDirectory:
             rotaconformers_extension_file=rotaconformers_extension_file,
             rotaconformers_index_file=rotaconformers_index_file,
             rotaconformers_extension_index_file=rotaconformers_extension_index_file,
+            rotaconformers_clustering_file=rotaconformers_clustering_file,
+            rotaconformers_extension_clustering_file=rotaconformers_extension_clustering_file,
         )
