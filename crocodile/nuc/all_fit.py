@@ -77,13 +77,13 @@ def all_fit(
         conf_mask &= fragment_library.conformer_mask
 
     refe_com = reference.mean(axis=0)
-    o = np.zeros(3)
     rmsd_threshold_sq = rmsd_threshold * rmsd_threshold
     grid_spacing_sq = grid_spacing * grid_spacing
     rotaconformers_clustering = fragment_library.rotaconformers_clustering
 
     for conf in tqdm(np.where(conf_mask)[0]):
         conformer_coordinates = fragment_library.coordinates[conf]
+
         rotamers = fragment_library.get_rotamers(conf)
 
         if rotaconformers_clustering:
@@ -108,9 +108,9 @@ def all_fit(
             for c in np.where(clus_rmsds < 2.0 + 2 * rotamer_precision)[0]:
                 i0, i1 = clus_rotamers_ind[c : c + 2]
                 cc = clustering[i0:i1]
-                candidate_rotamers0 += cc.tolist()
+                candidate_rotamers0.append(cc)
             if candidate_rotamers0:
-                candidate_rotamers0 = np.array(candidate_rotamers0).astype(int)
+                candidate_rotamers0 = np.concatenate(candidate_rotamers0).astype(int)
                 cand_superpositions = np.einsum(
                     "kj,ijl->ikl",
                     conformer_coordinates,
@@ -125,6 +125,10 @@ def all_fit(
                 candidate_rotamers = candidate_rotamers0[candidate_rotamers_ind]
                 candidate_superpositions = cand_superpositions[candidate_rotamers_ind]
                 candidate_offsets = cand_offsets[candidate_rotamers_ind]
+            else:
+                candidate_rotamers = []
+                candidate_superpositions = []
+                candidate_offsets = []
         else:
             superpositions = np.einsum("kj,ijl->ikl", conformer_coordinates, rotamers)
             offsets = refe_com - superpositions.mean(axis=1)

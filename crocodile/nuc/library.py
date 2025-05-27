@@ -169,7 +169,7 @@ class LibraryFactory:
         ):
             assert rotaconformers_extension_clustering_file is not None
 
-    def load_rotaconformers(self) -> None:
+    def load_rotaconformers(self, *, with_clustering=True) -> None:
         """Load the rotamers from file into memory.
         Convert them into rotation matrix form.
         This is expensive, both in terms of disk I/O and in terms of memory,
@@ -206,8 +206,8 @@ class LibraryFactory:
 
         rotaconformers = Rotation.from_rotvec(rotaconformers0).as_matrix()
 
-        clustering = None
-        if self.rotaconformers_clustering_file is not None:
+        self.rotaconformers_clustering = None
+        if self.rotaconformers_clustering_file is not None and with_clustering:
             master_clustering = np.load(self.rotaconformers_clustering_file)
             clustering, clustering_ind, clustering_ind_ind = load_clustering(
                 master_clustering, len(self.primary_coordinates)
@@ -253,7 +253,11 @@ class LibraryFactory:
                     assert f1 == rotaconformers_index[conf - 1]
                 assert f2 == rotaconformers_index[conf]
 
-        self.rotaconformers_clustering = clustering, clustering_ind, clustering_ind_ind
+            self.rotaconformers_clustering = (
+                clustering,
+                clustering_ind,
+                clustering_ind_ind,
+            )
 
         self.rotaconformers = rotaconformers
         self.rotaconformers_index = rotaconformers_index
@@ -281,6 +285,7 @@ class LibraryFactory:
         *,
         prune_conformers: bool = False,
         nucleotide_mask: Optional[np.ndarray] = None,
+        only_base: bool = False,
         with_rotaconformers: bool = False,
     ) -> Library:
         """Creates a Library, filtered by origin and/or nucleotide selection.
@@ -295,6 +300,10 @@ class LibraryFactory:
         - Filtering by nucleotide mask. Provide a boolean mask with the same length as the sequence.
             Only the atoms of the nucleotides where the mask is True are selected in the conformer coordinates
             Rotaconformers are unaffected.
+
+        If only_base = True, only the coordinates of the base are returned.
+
+        nucleotide mask and only_base are reflected in the atom mask of the library (Library.atom_mask).
 
         If with_rotaconformers is True, the factory's rotaconformers are attached to the library object.
         This is cheap in terms of memory. It requires that the rotaconformers have been loaded with .load_rotaconformers
@@ -360,16 +369,22 @@ class LibraryFactory:
             coordinates = primary_coordinates
 
         atom_mask = None
-        if nucleotide_mask is not None:
-            nucseq, nuc_indices = ppdb2nucseq(
-                self.template, rna=self.rna, return_index=True
-            )
-            assert nucseq == self.sequence
-            atom_mask = np.zeros(len(self.template), bool)
-            for n in range(len(self.sequence)):
-                if nucleotide_mask[n]:
-                    first, last = nuc_indices[n]
-                    atom_mask[first:last] = 1
+        if only_base or nucleotide_mask is not None:
+            atom_mask = np.ones(len(self.template), bool)
+            if nucleotide_mask is not None:
+                nucseq, nuc_indices = ppdb2nucseq(
+                    self.template, rna=self.rna, return_index=True
+                )
+                assert nucseq == self.sequence
+                for n in range(len(self.sequence)):
+                    if not nucleotide_mask[n]:
+                        first, last = nuc_indices[n]
+                        atom_mask[first:last] = 0
+            if only_base:
+                base = np.array(
+                    [len(name) == 2 for name in self.template["name"]], bool
+                )
+                atom_mask &= base
             coordinates = coordinates[:, atom_mask]
 
         rotaconformers = None

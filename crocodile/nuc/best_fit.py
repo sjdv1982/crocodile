@@ -24,12 +24,16 @@ def _fit_conformer(refe_coor, lib):
     return conformer2, rotmat, offset, rmsd
 
 
-def _fit_discrete(refe_coor, lib, lib2, rotamer_precision, grid_spacing):
+def _fit_discrete(
+    refe_coor, lib, lib2, rotamer_precision, grid_spacing, *, keep_best_conformer
+):
     _, rmsds = superimpose_array(lib.coordinates, refe_coor)
     ini_threshold = rmsds.min() + rotamer_precision + grid_spacing
     ini_filter = rmsds < ini_threshold
     sorting = rmsds[ini_filter].argsort()
     conf_indices = np.arange(len(rmsds), dtype=int)[ini_filter][sorting]
+    if keep_best_conformer:
+        conf_indices = conf_indices[:1]
 
     refe_com = refe_coor.mean(axis=0)
 
@@ -69,6 +73,7 @@ def best_fit(
     fragment_libraries: dict[str:LibraryFactory],
     *,
     discrete_representation: bool,
+    keep_best_conformer: Optional[bool] = None,
     rotamer_precision: Optional[float] = None,
     grid_spacing: Optional[float] = None,
 ):
@@ -88,6 +93,8 @@ def best_fit(
     - The fragment library must have rotaconformer support
     - The rotamer precision (the maximum RMSD between rotamers)
        and the grid spacing (voxelsize) must be specified.
+    - if keep_best_conformer, only consider the best conformer
+       and calculate its best rotamer and offset
 
     Returns: a numpy array containing the best fit for each valid fragment.
     Its fields are:
@@ -147,7 +154,12 @@ def best_fit(
                 curr_result0 = _fit_conformer(refe_coor, lib)
             else:
                 curr_result0 = _fit_discrete(
-                    refe_coor, lib, lib2, rotamer_precision, grid_spacing
+                    refe_coor,
+                    lib,
+                    lib2,
+                    rotamer_precision,
+                    grid_spacing,
+                    keep_best_conformer=keep_best_conformer,
                 )
             results0[seq].append(curr_result0)
 
