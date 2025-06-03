@@ -13,10 +13,10 @@ def load_clustering(master_clustering, nconf):
     assert master_clustering[0] == nconf
     pos = nconf + 1
     clustering_ind_ind = master_clustering[1:pos]
-    n_clustering_ind = clustering_ind_ind.sum()
+    n_clustering_ind = int(clustering_ind_ind.sum())
     clustering_ind = master_clustering[pos : n_clustering_ind + pos]
     pos = n_clustering_ind + pos
-    n_clustering = clustering_ind.sum()
+    n_clustering = int(clustering_ind.sum())
     assert n_clustering == len(master_clustering) - pos
     clustering = master_clustering[pos:] - 1
     return clustering, clustering_ind, clustering_ind_ind
