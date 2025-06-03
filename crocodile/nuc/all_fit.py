@@ -1,7 +1,6 @@
 import numpy as np
 from typing import Optional
 from nefertiti.functions.superimpose import superimpose_array
-from tqdm import tqdm
 
 from .library import Library
 
@@ -81,7 +80,7 @@ def all_fit(
     grid_spacing_sq = grid_spacing * grid_spacing
     rotaconformers_clustering = fragment_library.rotaconformers_clustering
 
-    for conf in tqdm(np.where(conf_mask)[0]):
+    for conf in np.where(conf_mask)[0]:
         conformer_coordinates = fragment_library.coordinates[conf]
 
         rotamers = fragment_library.get_rotamers(conf)
@@ -111,6 +110,8 @@ def all_fit(
                 candidate_rotamers0.append(cc)
             if candidate_rotamers0:
                 candidate_rotamers0 = np.concatenate(candidate_rotamers0).astype(int)
+
+            if len(candidate_rotamers0):
                 cand_superpositions = np.einsum(
                     "kj,ijl->ikl",
                     conformer_coordinates,
@@ -129,6 +130,7 @@ def all_fit(
                 candidate_rotamers = []
                 candidate_superpositions = []
                 candidate_offsets = []
+
         else:
             superpositions = np.einsum("kj,ijl->ikl", conformer_coordinates, rotamers)
             offsets = refe_com - superpositions.mean(axis=1)
