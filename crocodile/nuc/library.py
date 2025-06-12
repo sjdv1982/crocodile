@@ -34,6 +34,10 @@ class Library(NamedTuple):
         If both a primary and extension coordinate array were present, "coordinates" is their concatenation.
         The (extension part of the) array may have been filtered based on conformer origin.
 
+
+    nprimary: int
+        The first nprimary conformers of "coordinates" are primary conformers.
+
     sequence: str
         Nucleotide sequence
 
@@ -63,6 +67,8 @@ class Library(NamedTuple):
     """
 
     coordinates: np.ndarray
+
+    nprimary: int
 
     sequence: str
 
@@ -148,6 +154,7 @@ class LibraryFactory:
         self.template = template
         self.rna = rna
         self.primary_coordinates = primary_coordinates
+        self.nprimary = len(primary_coordinates)
         self.replacement_coordinates = replacement_coordinates
         self.replacement_origins = replacement_origins
         self.extension_coordinates = extension_coordinates
@@ -398,6 +405,7 @@ class LibraryFactory:
         result = Library(
             sequence=self.sequence,
             coordinates=coordinates,
+            nprimary=self.nprimary,
             atom_mask=atom_mask,
             conformer_mask=conformer_mask,
             conformer_mapping=conformer_mapping,

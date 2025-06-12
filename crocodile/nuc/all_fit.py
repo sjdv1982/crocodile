@@ -14,16 +14,87 @@ _mx2, _my2, _mz2 = (
 _msq = (_mx2**2 + _my2**2 + _mz2**2).astype(int)
 
 
+def conformer_mask_from_general_pairing(
+    trinucleotide_pairing: list,
+    conformer_rmsd_threshold: float,
+    *,
+    min_mask_length: int,
+):
+    """Build conformer mask from general trinucleotide pairing.
+    That is, return two masks of conformers, where the mask is 1 if the conformer
+      participates in one or more trinucleotide pairs.
+    """
+    conf1, conf2 = set(), set()
+    for pairing in trinucleotide_pairing:
+        for (p1, p2), crmsd in pairing:
+            if crmsd < conformer_rmsd_threshold:
+                conf1.add(p1)
+                conf2.add(p2)
+    max1 = max(max(conf1), min_mask_length)
+    mask1 = np.zeros(max1, bool)
+    mask1[list(conf1)] = 1
+    max2 = max(max(conf2), min_mask_length)
+    mask2 = np.zeros(max2, bool)
+    mask2[list(conf2)] = 1
+    return mask1, mask2
+
+
+def conformer_masks_from_specific_pairing(
+    trinucleotide_pairing: list,
+    conformer_rmsd_threshold: float,
+    *,
+    grow_up: bool,
+    nconformers: int,
+    mask_length: int,
+):
+    """Build conformer masks from specific trinucleotide pairing.
+    Return nconformer masks of length mask_length.
+    Iterate over each start conformer. Return a mask of conformers that can pair with the start conformer (conformer counting from zero).
+    If grow_up, the start conformer is the first element of the pair, else it is the second element.
+    """
+    masks = np.zeros((nconformers, mask_length), bool)
+    for start_conformer in range(nconformers):
+        conf = set()
+        for pairing in trinucleotide_pairing:
+            for (p1, p2), crmsd in pairing:
+                if crmsd < conformer_rmsd_threshold:
+                    if grow_up:
+                        if p1 == start_conformer:
+                            conf.add(p2)
+                    else:
+                        if p2 == start_conformer:
+                            conf.add(p1)
+
+        masks[start_conformer][list(conf)] = 1
+    return masks
+
+
+def conformer_mask_from_crmsd(
+    *,
+    reference: np.ndarray,
+    fragment_library: Library,
+    conformer_rmsd_threshold: float,
+):
+    """Build conformer mask from conformer RMSD threshold.
+    Only consider conformers with direct-superposition-onto-the-reference RMSD
+      is below this threshold.
+    This is typically specified when the reference is (part of) another discrete-representation pose,
+     in which case it is the compatibility RMSD."""
+    _, rmsds = superimpose_array(fragment_library.coordinates, reference)
+    return rmsds < conformer_rmsd_threshold
+
+
 def all_fit(
     reference: np.ndarray,
     *,
     fragment_library: Library,
     rmsd_threshold: float,
-    conformer_rmsd_threshold: Optional[float] = None,
+    conformer_mask: Optional[float] = None,
     rotamer_precision: float,
     grid_spacing: float,
     return_rotation_matrices: Optional[bool] = True,
     return_rotamer_indices: Optional[bool] = False,
+    with_tqdm: Optional[bool] = False,
 ) -> np.ndarray:
     """Get all discrete-representation poses within an RMSD threshold.
 
@@ -36,11 +107,9 @@ def all_fit(
     If the reference is an anchor, this is the anchor RMSD.
     If the reference is (part of) another discrete-representation pose, it is the overlap RMSD.
 
-    conformer_rmsd_threshold: optional.
-    If specified, only consider conformers with direct-superposition-onto-the-reference RMSD
-      is below this threshold.
-    This is typically specified when the reference is (part of) another discrete-representation pose,
-     in which case it is the compatibility RMSD.
+    conformer_mask: optional.
+    If specified, only consider conformers where the mask is 1.
+    This is in addition to (AND) the conformer mask of the Library.
 
     rotamer_precision: maximum RMSD between rotamers.
 
@@ -50,7 +119,6 @@ def all_fit(
     return_rotamer_indices: ...
     """
     assert return_rotamer_indices or return_rotation_matrices
-    assert conformer_rmsd_threshold is None or conformer_rmsd_threshold < rmsd_threshold
 
     fields = [("conformer", np.uint16)]
     if return_rotation_matrices:
@@ -68,10 +136,9 @@ def all_fit(
     nresults = 0
 
     _, rmsds = superimpose_array(fragment_library.coordinates, reference)
-    if conformer_rmsd_threshold is not None:
-        conf_mask = rmsds < conformer_rmsd_threshold
-    else:
-        conf_mask = rmsds < rmsd_threshold
+    conf_mask = rmsds < rmsd_threshold
+    if conformer_mask is not None:
+        conf_mask &= conformer_mask
     if fragment_library.conformer_mask is not None:
         conf_mask &= fragment_library.conformer_mask
 
@@ -80,7 +147,12 @@ def all_fit(
     grid_spacing_sq = grid_spacing * grid_spacing
     rotaconformers_clustering = fragment_library.rotaconformers_clustering
 
-    for conf in np.where(conf_mask)[0]:
+    iterator = np.where(conf_mask)[0]
+    if with_tqdm:
+        from tqdm import tqdm
+
+        iterator = tqdm(iterator)
+    for conf in iterator:
         conformer_coordinates = fragment_library.coordinates[conf]
 
         rotamers = fragment_library.get_rotamers(conf)
