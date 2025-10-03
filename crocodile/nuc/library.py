@@ -180,10 +180,8 @@ class LibraryFactory:
         """Load the rotamers from file into memory.
         Convert them into rotation matrix form.
         This is expensive, both in terms of disk I/O and in terms of memory,
-          and takes ~10s of computation.
 
         If clustering has been defined, load that as well.
-        This is also expensive in terms of disk I/O and takes ~10s of computation.
 
         If the rotaconformers have been loaded already, do nothing."""
         if self.rotaconformers is not None:
@@ -191,7 +189,7 @@ class LibraryFactory:
         rotaconformers = None
         rotaconformers_index = None
         if self.rotaconformers_file:
-            rotaconformers0 = np.load(self.rotaconformers_file)
+            rotaconformers = np.load(self.rotaconformers_file)
             rotaconformers_index = np.load(self.rotaconformers_index_file)
             assert len(rotaconformers_index) == len(self.primary_coordinates)
             if self.extension_coordinates is not None:
@@ -202,16 +200,14 @@ class LibraryFactory:
                 assert len(rotaconformers_extension_index) == len(
                     self.extension_coordinates
                 )
-                offset = len(rotaconformers0)
-                rotaconformers0 = np.concatenate(
-                    (rotaconformers0, rotaconformers_extension0)
+                offset = len(rotaconformers)
+                rotaconformers = np.concatenate(
+                    (rotaconformers, rotaconformers_extension0)
                 )
                 del rotaconformers_extension0
                 rotaconformers_index = np.concatenate(
                     (rotaconformers_index, rotaconformers_extension_index + offset)
                 )
-
-        rotaconformers = Rotation.from_rotvec(rotaconformers0).as_matrix()
 
         self.rotaconformers_clustering = None
         if self.rotaconformers_clustering_file is not None and with_clustering:
