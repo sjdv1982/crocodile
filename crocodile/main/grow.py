@@ -1,24 +1,26 @@
 import numpy as np
 from tqdm import tqdm, trange
 from scipy.spatial.transform import Rotation
-'''
+
+"""
 from crocodile.nuc.all_fit import (
     all_fit,
     conformer_mask_from_crmsd,
     conformer_mask_from_general_pairing,
     conformer_masks_from_specific_pairing,
 )
-'''
+"""
 from crocodile.nuc.library import LibraryFactory
 from crocodile.main.superimpose import superimpose_array
 from crocodile.main import tensorlib
+
 
 def _grow_from_anchor(command, constraints, state):
     from crocodile_library_config import dinucleotide_libraries
 
     origin = command["origin"]
     assert origin in ("anchor-up", "anchor-down")
-    
+
     fragment = command["fragment"]
     key = "frag" + str(fragment)
     assert key in constraints
@@ -46,7 +48,7 @@ def _grow_from_anchor(command, constraints, state):
     seq = refe.get_sequence(fragment, fraglen=2)
 
     pdb_code = constraints["pdb_code"]
-    libf:LibraryFactory = dinucleotide_libraries[seq]
+    libf: LibraryFactory = dinucleotide_libraries[seq]
     libf.load_rotaconformers()
     print("START")
 
@@ -74,7 +76,7 @@ def _grow_from_anchor(command, constraints, state):
     else:
         lib_scalevec = np.repeat(anchor_scalevec, len(lib_coors))
     lib_cmat_t = lib_cmat.dot(anchor_tensor)
-    
+
     for n in trange(len(lib_indices)):
         conf = lib_indices[n]
         scalevec = lib_scalevec[n]
@@ -83,18 +85,24 @@ def _grow_from_anchor(command, constraints, state):
         rotamers = Rotation.from_rotvec(rotamers0)
         rotamers_t = rotamers.as_matrix().dot(lib_cmat_t[n])
         continue
-        msd_conformational = lib_crmsd[n]**2
+        msd_conformational = lib_crmsd[n] ** 2
         msd_rotational = tensorlib.get_msd(rotamers_t, None, scalevec)
         msd_maxtrans = ovRMSD**2 - msd_conformational - msd_rotational
-        #print(msd_maxtrans.shape, (msd_maxtrans>0).sum(), msd_maxtrans.max())
-    
+        # print(msd_maxtrans.shape, (msd_maxtrans>0).sum(), msd_maxtrans.max())
+
+
+def _grow_from_fragment(command, constraints, state):
+    print(command)
+    poses = np.load(f'state/{command["origin"]}.npy')
+    exit(0)
+
 
 def grow(command, constraints, state):
     assert command["type"] == "grow", command
     print(command)
     print("GROW")
-        
+
     if command["origin"] in ("anchor-up", "anchor-down"):
         return _grow_from_anchor(command, constraints, state)
     else:
-        raise NotImplementedError
+        return _grow_from_fragment(command, constraints, state)
