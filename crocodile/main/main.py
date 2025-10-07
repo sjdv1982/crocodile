@@ -3,6 +3,15 @@ import os, sys
 
 workdir = None
 
+print("import julia...")
+from juliacall import Main
+
+
+currdir = os.path.dirname(os.path.realpath(__file__))
+Main.include(os.path.join(currdir, "croco_candidates.jl"))
+print("...done")
+
+
 from crocodile.nuc.reference import Reference
 from crocodile.main.grow import grow
 from crocodile.main import pdb
