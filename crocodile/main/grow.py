@@ -352,8 +352,16 @@ def _grow_from_fragment(command, constraints, state):
         }
         candpool[proto] = p
 
-    def process_task(task, membership, rmsd_upper, rmsd_lower):
+    def process_task(task):
         proto_align = tasks.proto_align
+        assert task.membership is not None
+        assert task.rmsd_upper is not None
+        assert task.rmsd_lower is not None
+
+        membership = task.membership
+        rmsd_upper = task.rmsd_upper
+        rmsd_lower = task.rmsd_lower
+
         csource_rotaconf = rmsd_upper.shape[1]
         ctarget_rotaconf = membership.shape[1]
 
@@ -455,26 +463,28 @@ def _grow_from_fragment(command, constraints, state):
         p["remain_msd"].append(cand_msd_remain)
 
     for n in trange(len(tasks)):
-        task, membership, rmsd_upper, rmsd_lower = tasks[n].prepare_task(semaphore)
+        task = tasks[n]
+        task.prepare_task(semaphore)
         semaphore.release()
-        process_task(task, membership, rmsd_upper, rmsd_lower)
+        process_task(task)
 
     """
     with ThreadPoolExecutor(
         max_workers=min(len(tasks), 20)
     ) as executor:  # load data for 20
-        pending = [
-            executor.submit(tasks[tasknr].prepare_task, semaphore)
+        pending = {
+            executor.submit(tasks[tasknr].prepare_task, semaphore): tasknr
             for tasknr in range(len(tasks))
-        ]
+        }
         with tqdm(None, total=len(tasks)) as progress:
             while pending:
-                done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                done, _ = wait(set(pending), return_when=FIRST_COMPLETED)
                 for fut in done:
-                    task, membership, rmsd_upper, rmsd_lower = fut.result()
+                    idx = pending.pop(fut)
+                    fut.result()
                     semaphore.release()
                     progress.update()
-                    process_task(task, membership, rmsd_upper, rmsd_lower)
+                    process_task(tasks[idx])
     """
 
     for p in candpool.values():
