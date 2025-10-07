@@ -162,18 +162,11 @@ class TaskList:
 
     def __init__(
         self,
-        all_proto: Sequence[int],
         *,
-        source_confs: Dict[int, Iterable[int]],
-        conf_prototypes: Sequence[int],
-        prototypes: np.ndarray,
-        prev_lib,
         origin_rotaconformers: Dict[int, Rotation],
-        lib,
-        crmsd_ok: np.ndarray,
-        superimpose,
         prototype_clusters: Dict[int, Rotation],
         prototypes_scalevec: np.ndarray,
+        conf_prototypes: Sequence[int],
         load_membership,
         motif: str,
         nucpos: int,
@@ -189,24 +182,6 @@ class TaskList:
             nucpos=nucpos,
             ovRMSD=ovRMSD,
         )
-
-        self._build_tasks(
-            all_proto=all_proto,
-            source_confs=source_confs,
-            conf_prototypes=conf_prototypes,
-            prototypes=prototypes,
-            prev_lib=prev_lib,
-            origin_rotaconformers=origin_rotaconformers,
-            lib=lib,
-            crmsd_ok=crmsd_ok,
-            superimpose=superimpose,
-        )
-
-        self._context["proto_align"] = self._proto_align
-
-        for task in self._tasks:
-            task.finalize()
-            task.set_context(self._context)
 
     @property
     def proto_align(self) -> Dict[Tuple[int, int], Rotation]:
@@ -278,6 +253,14 @@ class TaskList:
         rmsd_upper_data, rmsd_upper_shapes = _collect_matrix(tasks, "rmsd_upper")
         rmsd_lower_data, rmsd_lower_shapes = _collect_matrix(tasks, "rmsd_lower")
 
+        proto_align_items = sorted(self._proto_align.items())
+        if proto_align_items:
+            proto_align_keys = np.array([k for k, _ in proto_align_items], dtype=int)
+            proto_align_rotvec = np.stack([v.as_rotvec() for _, v in proto_align_items])
+        else:
+            proto_align_keys = np.empty((0, 2), dtype=int)
+            proto_align_rotvec = np.empty((0, 3))
+
         saver = np.savez_compressed if compressed else np.savez
         saver(
             filepath,
@@ -295,7 +278,111 @@ class TaskList:
             rmsd_upper_shapes=rmsd_upper_shapes,
             rmsd_lower_data=rmsd_lower_data,
             rmsd_lower_shapes=rmsd_lower_shapes,
+            proto_align_keys=proto_align_keys,
+            proto_align_rotvec=proto_align_rotvec,
         )
+
+    def load_npz(self, filepath: str) -> None:
+        """Load tasks from an NPZ archive previously created by `to_npz`."""
+
+        if self._tasks:
+            raise RuntimeError("Tasks already built")
+
+        with np.load(filepath) as data:
+            prototypes = data["prototype"]
+            rc_source = data["rc_source"]
+            rc_target = data["rc_target"]
+            prepared = data["prepared"].astype(bool)
+            target_conformers = data["target_conformers"]
+            target_counts = data["target_counts"]
+            source_conformers = data["source_conformers"]
+            source_counts = data["source_counts"]
+            membership_data = data["membership_data"]
+            membership_shapes = data["membership_shapes"]
+            rmsd_upper_data = data["rmsd_upper_data"]
+            rmsd_upper_shapes = data["rmsd_upper_shapes"]
+            rmsd_lower_data = data["rmsd_lower_data"]
+            rmsd_lower_shapes = data["rmsd_lower_shapes"]
+            proto_align_keys = data["proto_align_keys"]
+            proto_align_rotvec = data["proto_align_rotvec"]
+
+        n_tasks = len(prototypes)
+
+        target_offsets = np.concatenate(([0], np.cumsum(target_counts)))
+        source_offsets = np.concatenate(([0], np.cumsum(source_counts)))
+
+        membership_sizes = np.prod(membership_shapes, axis=1, dtype=int)
+        membership_offsets = np.concatenate(([0], np.cumsum(membership_sizes)))
+
+        rmsd_upper_sizes = np.prod(rmsd_upper_shapes, axis=1, dtype=int)
+        rmsd_upper_offsets = np.concatenate(([0], np.cumsum(rmsd_upper_sizes)))
+
+        rmsd_lower_sizes = np.prod(rmsd_lower_shapes, axis=1, dtype=int)
+        rmsd_lower_offsets = np.concatenate(([0], np.cumsum(rmsd_lower_sizes)))
+
+        tasks: List[Task] = []
+        for idx in range(n_tasks):
+            t_start, t_end = target_offsets[idx : idx + 2]
+            s_start, s_end = source_offsets[idx : idx + 2]
+            task = Task(
+                nr=idx,
+                prototype=int(prototypes[idx]),
+                target_conformers=target_conformers[t_start:t_end],
+                source_conformers=source_conformers[s_start:s_end],
+                rc_source=int(rc_source[idx]),
+                rc_target=int(rc_target[idx]),
+            )
+            task.finalize()
+            task.set_context(self._context)
+
+            if prepared[idx]:
+                m_start, m_end = membership_offsets[idx : idx + 2]
+                rmu_start, rmu_end = rmsd_upper_offsets[idx : idx + 2]
+                rml_start, rml_end = rmsd_lower_offsets[idx : idx + 2]
+
+                if membership_shapes[idx].prod():
+                    task.membership = membership_data[m_start:m_end].reshape(
+                        tuple(membership_shapes[idx])
+                    )
+                else:
+                    task.membership = np.array([], dtype=membership_data.dtype).reshape(
+                        tuple(membership_shapes[idx])
+                    )
+
+                if rmsd_upper_shapes[idx].prod():
+                    task.rmsd_upper = rmsd_upper_data[rmu_start:rmu_end].reshape(
+                        tuple(rmsd_upper_shapes[idx])
+                    )
+                else:
+                    task.rmsd_upper = np.array([], dtype=rmsd_upper_data.dtype).reshape(
+                        tuple(rmsd_upper_shapes[idx])
+                    )
+
+                if rmsd_lower_shapes[idx].prod():
+                    task.rmsd_lower = rmsd_lower_data[rml_start:rml_end].reshape(
+                        tuple(rmsd_lower_shapes[idx])
+                    )
+                else:
+                    task.rmsd_lower = np.array([], dtype=rmsd_lower_data.dtype).reshape(
+                        tuple(rmsd_lower_shapes[idx])
+                    )
+
+                task._prepared = True
+
+            tasks.append(task)
+
+        self._tasks = tasks
+
+        proto_align = {}
+        for key, rotvec in zip(proto_align_keys, proto_align_rotvec):
+            if len(key) != 2:
+                continue
+            proto = int(key[0])
+            conf = int(key[1])
+            proto_align[(proto, conf)] = Rotation.from_rotvec(rotvec)
+
+        self._proto_align = proto_align
+        self._context["proto_align"] = proto_align
 
     def _initialize_state(
         self,
@@ -323,7 +410,7 @@ class TaskList:
             "membership_bins": self.MEMBERSHIP_BINS,
         }
 
-    def _build_tasks(
+    def build_tasks(
         self,
         *,
         all_proto: Sequence[int],
@@ -336,6 +423,9 @@ class TaskList:
         crmsd_ok: np.ndarray,
         superimpose,
     ) -> None:
+        if self._tasks:
+            raise RuntimeError("Tasks already built")
+
         tasks = self._tasks
         proto_align = self._proto_align
 
@@ -411,3 +501,9 @@ class TaskList:
                         if not curr_task.has_source_conformer(source_conf):
                             rc = origin_rotaconformers[source_conf]
                             curr_task.add_source_conformer(source_conf, len(rc))
+
+        self._context["proto_align"] = proto_align
+
+        for task in tasks:
+            task.finalize()
+            task.set_context(self._context)
