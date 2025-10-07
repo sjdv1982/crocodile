@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Sequence, Tuple
+from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tuple
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -14,22 +14,67 @@ class Task:
         *,
         nr: int,
         prototype: int,
-        target_conformers: np.ndarray,
-        source_conformers: np.ndarray,
-        rc_source: int,
-        rc_target: int,
-        context: Dict[str, object],
+        target_conformers: Iterable[int] | None = None,
+        source_conformers: Iterable[int] | None = None,
+        rc_source: int = 0,
+        rc_target: int = 0,
+        context: Optional[Dict[str, object]] = None,
     ) -> None:
         self.nr = nr
         self.prototype = prototype
-        self.target_conformers = np.asarray(target_conformers, dtype=int)
-        self.source_conformers = np.asarray(source_conformers, dtype=int)
-        self.rc_source = rc_source
-        self.rc_target = rc_target
+        self.rc_source = int(rc_source)
+        self.rc_target = int(rc_target)
         self._context = context
 
+        self._target_conformers: List[int] = [int(c) for c in (target_conformers or [])]
+        self._source_conformers: Set[int] = {int(c) for c in (source_conformers or [])}
+
+        self.target_conformers: Optional[np.ndarray] = None
+        self.source_conformers: Optional[np.ndarray] = None
+        self._finalized = False
+
+    def add_target_conformer(self, conformer: int, rc_count: int) -> None:
+        if self._finalized:
+            self._raise_finalized()
+        self._target_conformers.append(int(conformer))
+        self.rc_target += int(rc_count)
+
+    def add_source_conformer(self, conformer: int, rc_count: int) -> None:
+        if self._finalized:
+            self._raise_finalized()
+        conformer = int(conformer)
+        if conformer not in self._source_conformers:
+            self._source_conformers.add(conformer)
+            self.rc_source += int(rc_count)
+
+    def has_source_conformer(self, conformer: int) -> bool:
+        return int(conformer) in self._source_conformers
+
+    def iter_source_conformers(self) -> Iterator[int]:
+        if self._finalized and self.source_conformers is not None:
+            return iter(self.source_conformers.tolist())
+        return iter(self._source_conformers)
+
+    def finalize(self) -> None:
+        if self._finalized:
+            return
+        self._target_conformers = sorted(self._target_conformers)
+        source_list = sorted(self._source_conformers)
+        self.target_conformers = np.array(self._target_conformers, dtype=int)
+        self.source_conformers = np.array(source_list, dtype=int)
+        self._finalized = True
+
+    def set_context(self, context: Dict[str, object]) -> None:
+        self._context = context
+
+    def _raise_finalized(self) -> None:
+        raise RuntimeError("Cannot modify task after finalization")
+
     def prepare_task(self, semaphore) -> Tuple["Task", np.ndarray, np.ndarray, np.ndarray]:
-        """Prepare membership and RMSD data for this task."""
+        if not self._finalized:
+            raise RuntimeError("Task must be finalized before preparation")
+        if self._context is None:
+            raise RuntimeError("Task context not initialised")
 
         semaphore.acquire()
 
@@ -127,7 +172,7 @@ class TaskList:
         ovRMSD: float,
     ) -> None:
         proto_align: Dict[Tuple[int, int], Rotation] = {}
-        task_dicts: List[Dict[str, object]] = []
+        tasks: List[Task] = []
 
         for proto in all_proto:
             conf_pairs = {
@@ -144,16 +189,9 @@ class TaskList:
                 mat = superimpose(prev_lib.coordinates[oriconf], prototype)[0]
                 proto_align[proto, oriconf] = Rotation.from_matrix(mat)
 
-            def new_task() -> Dict[str, object]:
-                curr_task: Dict[str, object] = {
-                    "nr": len(task_dicts),
-                    "prototype": proto,
-                    "target_conformers": [],
-                    "source_conformers": set(),
-                    "rc_source": 0,
-                    "rc_target": 0,
-                }
-                task_dicts.append(curr_task)
+            def new_task() -> Task:
+                curr_task = Task(nr=len(tasks), prototype=proto)
+                tasks.append(curr_task)
                 return curr_task
 
             target_conf_list = sorted(
@@ -166,37 +204,35 @@ class TaskList:
                 target_conf_done.add(target_conf)
                 curr_task = new_task()
                 rc = lib.get_rotamers(target_conf)
-                curr_task["rc_target"] = len(rc)
-                curr_task["target_conformers"].append(int(target_conf))
+                curr_task.add_target_conformer(target_conf, len(rc))
                 for source_conf in conf_pairs[target_conf]:
-                    curr_task["source_conformers"].add(int(source_conf))
                     rc = origin_rotaconformers[source_conf]
-                    curr_task["rc_source"] = int(curr_task["rc_source"]) + len(rc)
-                while curr_task["rc_target"] * curr_task["rc_source"] < 100e6:
+                    curr_task.add_source_conformer(source_conf, len(rc))
+                while curr_task.rc_target * curr_task.rc_source < 100e6:
                     best_target_conf = None
                     lowest_waste = None
-                    for target_conf in target_conf_list:
-                        if target_conf in target_conf_done:
+                    for candidate_conf in target_conf_list:
+                        if candidate_conf in target_conf_done:
                             continue
                         waste = 0
-                        rc_target_conf = len(lib.get_rotamers(target_conf))
-                        for source_conf in conf_pairs[target_conf]:
-                            if source_conf not in curr_task["source_conformers"]:
+                        rc_target_conf = len(lib.get_rotamers(candidate_conf))
+                        for source_conf in conf_pairs[candidate_conf]:
+                            if not curr_task.has_source_conformer(source_conf):
                                 rc = origin_rotaconformers[source_conf]
-                                assert len(rc) and curr_task["rc_target"]
-                                waste += len(rc) * curr_task["rc_target"]
+                                assert len(rc) and curr_task.rc_target
+                                waste += len(rc) * curr_task.rc_target
                             else:
-                                assert crmsd_ok[source_conf, target_conf]
-                        for source_conf in curr_task["source_conformers"]:
-                            if source_conf not in conf_pairs[target_conf]:
+                                assert crmsd_ok[source_conf, candidate_conf]
+                        for source_conf in curr_task.iter_source_conformers():
+                            if source_conf not in conf_pairs[candidate_conf]:
                                 rc = origin_rotaconformers[source_conf]
                                 assert len(rc) and rc_target_conf
                                 waste += len(rc) * rc_target_conf
                             else:
-                                assert crmsd_ok[source_conf, target_conf]
+                                assert crmsd_ok[source_conf, candidate_conf]
 
                         if lowest_waste is None or waste < lowest_waste:
-                            best_target_conf = target_conf
+                            best_target_conf = candidate_conf
                             lowest_waste = waste
 
                     if best_target_conf is None:
@@ -204,21 +240,12 @@ class TaskList:
 
                     target_conf_done.add(best_target_conf)
                     rc = lib.get_rotamers(best_target_conf)
-                    curr_task["rc_target"] += len(rc)
-                    curr_task["target_conformers"].append(int(best_target_conf))
+                    curr_task.add_target_conformer(best_target_conf, len(rc))
                     for source_conf in conf_pairs[best_target_conf]:
                         assert crmsd_ok[source_conf, best_target_conf]
-                        source_conf = int(source_conf)
-                        if source_conf not in curr_task["source_conformers"]:
-                            curr_task["source_conformers"].add(source_conf)
+                        if not curr_task.has_source_conformer(source_conf):
                             rc = origin_rotaconformers[source_conf]
-                            curr_task["rc_source"] += len(rc)
-
-        for curr_task in task_dicts:
-            target = np.array(curr_task["target_conformers"], dtype=int)
-            curr_task["target_conformers"] = np.sort(target)
-            source = np.array(list(curr_task["source_conformers"]), dtype=int)
-            curr_task["source_conformers"] = np.sort(source)
+                            curr_task.add_source_conformer(source_conf, len(rc))
 
         context = {
             "origin_rotaconformers": origin_rotaconformers,
@@ -233,19 +260,12 @@ class TaskList:
             "membership_bins": self.MEMBERSHIP_BINS,
         }
 
+        for task in tasks:
+            task.finalize()
+            task.set_context(context)
+
         self._proto_align = proto_align
-        self._tasks = [
-            Task(
-                nr=curr_task["nr"],
-                prototype=curr_task["prototype"],
-                target_conformers=curr_task["target_conformers"],
-                source_conformers=curr_task["source_conformers"],
-                rc_source=curr_task["rc_source"],
-                rc_target=curr_task["rc_target"],
-                context=context,
-            )
-            for curr_task in task_dicts
-        ]
+        self._tasks = tasks
 
     @property
     def proto_align(self) -> Dict[Tuple[int, int], Rotation]:
