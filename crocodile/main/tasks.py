@@ -175,6 +175,9 @@ class Task:
             self.rmsd_upper,
             self.rmsd_lower,
         )
+        self.membership = None
+        self.rmsd_upper = None
+        self.rmsd_lower = None
         self.source_rotaconf_counts = source_rotaconf_counts.to_numpy()
         self.candidates = candidates.to_numpy() - 1
         self._processed = True
