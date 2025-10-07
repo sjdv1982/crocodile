@@ -310,7 +310,17 @@ def _grow_from_fragment(command, constraints, state):
     all_proto = np.unique(conf_prototypes[target_conformer_list])
 
     tasks = TaskList(
-        all_proto,
+        origin_rotaconformers=origin_rotaconformers,
+        prototype_clusters=prototype_clusters,
+        prototypes_scalevec=prototypes_scalevec,
+        conf_prototypes=conf_prototypes,
+        load_membership=_load_membership,
+        motif=motif,
+        nucpos=nucpos,
+        ovRMSD=ovRMSD,
+    )
+    tasks.build_tasks(
+        all_proto=all_proto,
         source_confs=source_confs,
         conf_prototypes=conf_prototypes,
         prototypes=prototypes,
@@ -319,12 +329,6 @@ def _grow_from_fragment(command, constraints, state):
         lib=lib,
         crmsd_ok=crmsd_ok,
         superimpose=superimpose,
-        prototype_clusters=prototype_clusters,
-        prototypes_scalevec=prototypes_scalevec,
-        load_membership=_load_membership,
-        motif=motif,
-        nucpos=nucpos,
-        ovRMSD=ovRMSD,
     )
 
     from threading import Semaphore
