@@ -4,6 +4,7 @@ from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tupl
 
 import numpy as np
 from scipy.spatial.transform import Rotation
+from juliacall import Main
 
 
 class Task:
@@ -34,7 +35,10 @@ class Task:
         self.membership: Optional[np.ndarray] = None
         self.rmsd_upper: Optional[np.ndarray] = None
         self.rmsd_lower: Optional[np.ndarray] = None
+        self.source_rotaconf_counts: Optional[np.ndarray] = None
+        self.candidates: Optional[np.ndarray] = None
         self._prepared = False
+        self._processed = False
         self._finalized = False
 
     def add_target_conformer(self, conformer: int, rc_count: int) -> None:
@@ -151,6 +155,24 @@ class Task:
         self.rmsd_lower = rmsd_lower
         self._prepared = True
 
+    def run_task(self) -> None:
+        if not self._prepared:
+            raise RuntimeError("Task must be prepared before processing")
+        if self._processed:
+            return
+        assert self.membership is not None
+        assert self.rmsd_upper is not None
+        assert self.rmsd_lower is not None
+
+        source_rotaconf_counts, candidates = Main.CrocoCandidates.compute_candidates(
+            self.membership,
+            self.rmsd_upper,
+            self.rmsd_lower,
+        )
+        self.source_rotaconf_counts = source_rotaconf_counts.to_numpy()
+        self.candidates = candidates.to_numpy() - 1
+        self._processed = True
+
 
 class TaskList:
     """Container around a collection of tasks with shared context."""
@@ -207,6 +229,7 @@ class TaskList:
         rc_source = np.array([task.rc_source for task in tasks], dtype=int)
         rc_target = np.array([task.rc_target for task in tasks], dtype=int)
         prepared = np.array([task._prepared for task in tasks], dtype=bool)
+        processed = np.array([task._processed for task in tasks], dtype=bool)
 
         def _concat_int(arrays: List[np.ndarray]) -> np.ndarray:
             if not arrays:
@@ -236,7 +259,9 @@ class TaskList:
                 membership_data_parts.append(task.membership.ravel())
 
         membership_data = (
-            np.concatenate(membership_data_parts) if membership_data_parts else np.array([], dtype=np.uint8)
+            np.concatenate(membership_data_parts)
+            if membership_data_parts
+            else np.array([], dtype=np.uint8)
         )
 
         def _collect_matrix(tasks: List[Task], attr: str) -> Tuple[np.ndarray, np.ndarray]:
@@ -261,6 +286,38 @@ class TaskList:
             proto_align_keys = np.empty((0, 2), dtype=int)
             proto_align_rotvec = np.empty((0, 3))
 
+        src_rotaconf_count_parts = [
+            task.source_rotaconf_counts
+            for task in tasks
+            if task.source_rotaconf_counts is not None
+        ]
+        cand_parts = [task.candidates for task in tasks if task.candidates is not None]
+
+        src_rotaconf_counts_counts = np.array(
+            [
+                len(task.source_rotaconf_counts)
+                if task.source_rotaconf_counts is not None
+                else 0
+                for task in tasks
+            ],
+            dtype=int,
+        )
+        candidate_counts = np.array(
+            [len(task.candidates) if task.candidates is not None else 0 for task in tasks],
+            dtype=int,
+        )
+
+        src_rotaconf_counts_data = (
+            np.concatenate(src_rotaconf_count_parts).astype(int, copy=False)
+            if src_rotaconf_count_parts
+            else np.array([], dtype=int)
+        )
+        candidate_data = (
+            np.concatenate(cand_parts).astype(int, copy=False)
+            if cand_parts
+            else np.array([], dtype=int)
+        )
+
         saver = np.savez_compressed if compressed else np.savez
         saver(
             filepath,
@@ -268,6 +325,7 @@ class TaskList:
             rc_source=rc_source,
             rc_target=rc_target,
             prepared=prepared,
+            processed=processed,
             target_conformers=targets_concat,
             target_counts=target_counts,
             source_conformers=sources_concat,
@@ -280,6 +338,10 @@ class TaskList:
             rmsd_lower_shapes=rmsd_lower_shapes,
             proto_align_keys=proto_align_keys,
             proto_align_rotvec=proto_align_rotvec,
+            source_rotaconf_counts_data=src_rotaconf_counts_data,
+            source_rotaconf_counts_counts=src_rotaconf_counts_counts,
+            candidate_data=candidate_data,
+            candidate_counts=candidate_counts,
         )
 
     def load_npz(self, filepath: str) -> None:
@@ -293,6 +355,7 @@ class TaskList:
             rc_source = data["rc_source"]
             rc_target = data["rc_target"]
             prepared = data["prepared"].astype(bool)
+            processed = data["processed"].astype(bool)
             target_conformers = data["target_conformers"]
             target_counts = data["target_counts"]
             source_conformers = data["source_conformers"]
@@ -305,6 +368,10 @@ class TaskList:
             rmsd_lower_shapes = data["rmsd_lower_shapes"]
             proto_align_keys = data["proto_align_keys"]
             proto_align_rotvec = data["proto_align_rotvec"]
+            source_rotaconf_counts_data = data["source_rotaconf_counts_data"]
+            source_rotaconf_counts_counts = data["source_rotaconf_counts_counts"]
+            candidate_data = data["candidate_data"]
+            candidate_counts = data["candidate_counts"]
 
         n_tasks = len(prototypes)
 
@@ -319,6 +386,9 @@ class TaskList:
 
         rmsd_lower_sizes = np.prod(rmsd_lower_shapes, axis=1, dtype=int)
         rmsd_lower_offsets = np.concatenate(([0], np.cumsum(rmsd_lower_sizes)))
+
+        src_rotaconf_offsets = np.concatenate(([0], np.cumsum(source_rotaconf_counts_counts)))
+        candidate_offsets = np.concatenate(([0], np.cumsum(candidate_counts)))
 
         tasks: List[Task] = []
         for idx in range(n_tasks):
@@ -368,6 +438,13 @@ class TaskList:
                     )
 
                 task._prepared = True
+
+            if processed[idx]:
+                sc_start, sc_end = src_rotaconf_offsets[idx : idx + 2]
+                cand_start, cand_end = candidate_offsets[idx : idx + 2]
+                task.source_rotaconf_counts = source_rotaconf_counts_data[sc_start:sc_end]
+                task.candidates = candidate_data[cand_start:cand_end]
+                task._processed = True
 
             tasks.append(task)
 
