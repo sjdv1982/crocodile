@@ -4,7 +4,6 @@ from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tupl
 
 import numpy as np
 from scipy.spatial.transform import Rotation
-from juliacall import Main
 
 
 class Task:
@@ -26,6 +25,11 @@ class Task:
         self.rc_source = int(rc_source)
         self.rc_target = int(rc_target)
         self._context = context
+
+        if isinstance(target_conformers, np.ndarray):
+            target_conformers = target_conformers.tolist()
+        if isinstance(source_conformers, np.ndarray):
+            source_conformers = source_conformers.tolist()
 
         self._target_conformers: List[int] = [int(c) for c in (target_conformers or [])]
         self._source_conformers: Set[int] = {int(c) for c in (source_conformers or [])}
@@ -156,6 +160,8 @@ class Task:
         self._prepared = True
 
     def run_task(self) -> None:
+        from .julia_import import Main
+
         if not self._prepared:
             raise RuntimeError("Task must be prepared before processing")
         if self._processed:
@@ -218,7 +224,7 @@ class TaskList:
     def __iter__(self):
         return iter(self._tasks)
 
-    def to_npz(self, filepath: str, *, compressed: bool = True) -> None:
+    def to_npz(self, filepath: str, *, compressed: bool = False) -> None:
         """Persist the task list to a single NPZ archive."""
 
         tasks = self._tasks
@@ -236,15 +242,29 @@ class TaskList:
                 return np.array([], dtype=int)
             return np.concatenate(arrays).astype(int, copy=False)
 
-        target_arrays = [task.target_conformers for task in tasks if task.target_conformers is not None]
-        source_arrays = [task.source_conformers for task in tasks if task.source_conformers is not None]
+        target_arrays = [
+            task.target_conformers
+            for task in tasks
+            if task.target_conformers is not None
+        ]
+        source_arrays = [
+            task.source_conformers
+            for task in tasks
+            if task.source_conformers is not None
+        ]
 
         target_counts = np.array(
-            [len(task.target_conformers) if task.target_conformers is not None else 0 for task in tasks],
+            [
+                len(task.target_conformers) if task.target_conformers is not None else 0
+                for task in tasks
+            ],
             dtype=int,
         )
         source_counts = np.array(
-            [len(task.source_conformers) if task.source_conformers is not None else 0 for task in tasks],
+            [
+                len(task.source_conformers) if task.source_conformers is not None else 0
+                for task in tasks
+            ],
             dtype=int,
         )
 
@@ -264,7 +284,9 @@ class TaskList:
             else np.array([], dtype=np.uint8)
         )
 
-        def _collect_matrix(tasks: List[Task], attr: str) -> Tuple[np.ndarray, np.ndarray]:
+        def _collect_matrix(
+            tasks: List[Task], attr: str
+        ) -> Tuple[np.ndarray, np.ndarray]:
             shapes = np.zeros((len(tasks), 2), dtype=int)
             parts: List[np.ndarray] = []
             for idx, task in enumerate(tasks):
@@ -295,15 +317,20 @@ class TaskList:
 
         src_rotaconf_counts_counts = np.array(
             [
-                len(task.source_rotaconf_counts)
-                if task.source_rotaconf_counts is not None
-                else 0
+                (
+                    len(task.source_rotaconf_counts)
+                    if task.source_rotaconf_counts is not None
+                    else 0
+                )
                 for task in tasks
             ],
             dtype=int,
         )
         candidate_counts = np.array(
-            [len(task.candidates) if task.candidates is not None else 0 for task in tasks],
+            [
+                len(task.candidates) if task.candidates is not None else 0
+                for task in tasks
+            ],
             dtype=int,
         )
 
@@ -319,6 +346,7 @@ class TaskList:
         )
 
         saver = np.savez_compressed if compressed else np.savez
+        print("DO SAVE")
         saver(
             filepath,
             prototype=prototypes,
@@ -387,7 +415,9 @@ class TaskList:
         rmsd_lower_sizes = np.prod(rmsd_lower_shapes, axis=1, dtype=int)
         rmsd_lower_offsets = np.concatenate(([0], np.cumsum(rmsd_lower_sizes)))
 
-        src_rotaconf_offsets = np.concatenate(([0], np.cumsum(source_rotaconf_counts_counts)))
+        src_rotaconf_offsets = np.concatenate(
+            ([0], np.cumsum(source_rotaconf_counts_counts))
+        )
         candidate_offsets = np.concatenate(([0], np.cumsum(candidate_counts)))
 
         tasks: List[Task] = []
@@ -442,7 +472,9 @@ class TaskList:
             if processed[idx]:
                 sc_start, sc_end = src_rotaconf_offsets[idx : idx + 2]
                 cand_start, cand_end = candidate_offsets[idx : idx + 2]
-                task.source_rotaconf_counts = source_rotaconf_counts_data[sc_start:sc_end]
+                task.source_rotaconf_counts = source_rotaconf_counts_data[
+                    sc_start:sc_end
+                ]
                 task.candidates = candidate_data[cand_start:cand_end]
                 task._processed = True
 
@@ -540,7 +572,9 @@ class TaskList:
                 for source_conf in conf_pairs[target_conf]:
                     rc = origin_rotaconformers[source_conf]
                     curr_task.add_source_conformer(source_conf, len(rc))
-                while curr_task.rc_target * curr_task.rc_source < self.WORKLOAD_THRESHOLD:
+                while (
+                    curr_task.rc_target * curr_task.rc_source < self.WORKLOAD_THRESHOLD
+                ):
                     best_target_conf = None
                     lowest_waste = None
                     for candidate_conf in target_conf_list:

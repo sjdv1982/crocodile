@@ -317,54 +317,67 @@ def _grow_from_fragment(command, constraints, state):
         nucpos=nucpos,
         ovRMSD=ovRMSD,
     )
-    tasks.build_tasks(
-        all_proto=all_proto,
-        source_confs=source_confs,
-        conf_prototypes=conf_prototypes,
-        prototypes=prototypes,
-        prev_lib=prev_lib,
-        origin_rotaconformers=origin_rotaconformers,
-        lib=lib,
-        crmsd_ok=crmsd_ok,
-        superimpose=superimpose,
-    )
+    npz_filename = "OUTPUT/test.npz"
+    if os.path.exists(npz_filename):
+        print("LOAD")
+        tasks.load_npz(npz_filename)
+        print("/LOAD")
+    else:
 
-    from threading import Semaphore
-    from concurrent.futures import (
-        ThreadPoolExecutor,
-        wait,
-        FIRST_COMPLETED,
-        ALL_COMPLETED,
-    )
+        tasks.build_tasks(
+            all_proto=all_proto,
+            source_confs=source_confs,
+            conf_prototypes=conf_prototypes,
+            prototypes=prototypes,
+            prev_lib=prev_lib,
+            origin_rotaconformers=origin_rotaconformers,
+            lib=lib,
+            crmsd_ok=crmsd_ok,
+            superimpose=superimpose,
+        )
 
-    semaphore = Semaphore(
-        10
-    )  # pre-load up to 10 tasks. After that, wait until a load has been consumed
+        from . import julia_import as _
+        from threading import Semaphore
+        from concurrent.futures import (
+            ThreadPoolExecutor,
+            wait,
+            FIRST_COMPLETED,
+            ALL_COMPLETED,
+        )
 
-    for n in trange(len(tasks)):
-        task = tasks[n]
-        task.prepare_task(semaphore)
-        semaphore.release()
-        task.run_task()
+        semaphore = Semaphore(
+            10
+        )  # pre-load up to 10 tasks. After that, wait until a load has been consumed
 
-    """
-    with ThreadPoolExecutor(
-        max_workers=min(len(tasks), 20)
-    ) as executor:  # load data for 20
-        pending = {
-            executor.submit(tasks[tasknr].prepare_task, semaphore): tasknr
-            for tasknr in range(len(tasks))
-        }
-        with tqdm(None, total=len(tasks)) as progress:
-            while pending:
-                done, _ = wait(set(pending), return_when=FIRST_COMPLETED)
-                for fut in done:
-                    idx = pending.pop(fut)
-                    fut.result()
-                    semaphore.release()
-                    progress.update()
-                    process_task(tasks[idx])
-    """
+        for n in trange(len(tasks)):
+            task = tasks[n]
+            task.prepare_task(semaphore)
+            semaphore.release()
+            task.run_task()
+
+        """
+        with ThreadPoolExecutor(
+            max_workers=min(len(tasks), 20)
+        ) as executor:  # load data for 20
+            pending = {
+                executor.submit(tasks[tasknr].prepare_task, semaphore): tasknr
+                for tasknr in range(len(tasks))
+            }
+            with tqdm(None, total=len(tasks)) as progress:
+                while pending:
+                    done, _ = wait(set(pending), return_when=FIRST_COMPLETED)
+                    for fut in done:
+                        idx = pending.pop(fut)
+                        fut.result()
+                        task = tasks[idx]
+                        task.prepare_task(semaphore)
+                        semaphore.release()
+                        task.run_task()
+                        progress.update()
+        """
+        print("SAVE")
+        tasks.to_npz(npz_filename)
+        print("/SAVE")
 
     candpool = {}
     for proto in all_proto:
