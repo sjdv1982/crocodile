@@ -123,7 +123,7 @@ def _grow_from_fragment(command, constraints, state):
 
     origin = command["origin"]
     origin_poses = np.load(f"state/{origin}.npy")  ###
-    origin_poses = origin_poses[:1000]  ###
+    # origin_poses = origin_poses[:1000]  ###
     prev_frag = int(open(f"state/{origin}.FRAG").read())  ###
     prev_key = "frag" + str(prev_frag)
 
@@ -349,13 +349,14 @@ def _grow_from_fragment(command, constraints, state):
             10
         )  # pre-load up to 10 tasks. After that, wait until a load has been consumed
 
+        """
         for n in trange(len(tasks)):
             task = tasks[n]
             task.prepare_task(semaphore)
             semaphore.release()
             task.run_task()
-
         """
+
         with ThreadPoolExecutor(
             max_workers=min(len(tasks), 20)
         ) as executor:  # load data for 20
@@ -370,11 +371,9 @@ def _grow_from_fragment(command, constraints, state):
                         idx = pending.pop(fut)
                         fut.result()
                         task = tasks[idx]
-                        task.prepare_task(semaphore)
                         semaphore.release()
                         task.run_task()
                         progress.update()
-        """
         print("SAVE")
         tasks.to_npz(npz_filename)
         print("/SAVE")
@@ -393,18 +392,6 @@ def _grow_from_fragment(command, constraints, state):
         candpool[proto] = p
 
     def process(task):
-        assert task.membership is not None
-        assert task.rmsd_upper is not None
-        assert task.rmsd_lower is not None
-
-        membership = task.membership
-        rmsd_upper = task.rmsd_upper
-        rmsd_lower = task.rmsd_lower
-
-        csource_rotaconf = rmsd_upper.shape[1]
-        ctarget_rotaconf = membership.shape[1]
-
-        task.run_task()
         source_rotaconf_counts = task.source_rotaconf_counts
         candidates = task.candidates
         assert source_rotaconf_counts is not None
@@ -418,7 +405,7 @@ def _grow_from_fragment(command, constraints, state):
         source_conf_boundaries = np.cumsum(
             [len(origin_rotaconformers[conf]) for conf in csource_conformers]
         )
-        assert source_conf_boundaries[-1] == csource_rotaconf
+        csource_rotaconf = source_conf_boundaries[-1]
 
         ctarget_rotaconformers0 = [
             lib.get_rotamers(conf) for conf in ctarget_conformers
@@ -432,8 +419,6 @@ def _grow_from_fragment(command, constraints, state):
                 for conf in ctarget_conformers
             ]
         )
-
-        assert target_conf_boundaries[-1] == ctarget_rotaconf
 
         ind_source_rotaconf = np.searchsorted(
             source_rotaconf_boundaries - 1,
