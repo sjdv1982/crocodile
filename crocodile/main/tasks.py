@@ -31,6 +31,10 @@ class Task:
 
         self.target_conformers: Optional[np.ndarray] = None
         self.source_conformers: Optional[np.ndarray] = None
+        self.membership: Optional[np.ndarray] = None
+        self.rmsd_upper: Optional[np.ndarray] = None
+        self.rmsd_lower: Optional[np.ndarray] = None
+        self._prepared = False
         self._finalized = False
 
     def add_target_conformer(self, conformer: int, rc_count: int) -> None:
@@ -70,7 +74,7 @@ class Task:
     def _raise_finalized(self) -> None:
         raise RuntimeError("Cannot modify task after finalization")
 
-    def prepare_task(self, semaphore) -> Tuple["Task", np.ndarray, np.ndarray, np.ndarray]:
+    def prepare_task(self, semaphore):
         if not self._finalized:
             raise RuntimeError("Task must be finalized before preparation")
         if self._context is None:
@@ -142,7 +146,10 @@ class Task:
         )
         assert rmsd.shape[1] == self.rc_source, (rmsd.shape[1], self.rc_source)
 
-        return self, membership, rmsd_upper, rmsd_lower
+        self.membership = membership
+        self.rmsd_upper = rmsd_upper
+        self.rmsd_lower = rmsd_lower
+        self._prepared = True
 
 
 class TaskList:
@@ -151,6 +158,7 @@ class TaskList:
     MEMBERSHIP_BINS = np.array(
         [1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5, 3.75, 4, 4.5, 5]
     )
+    WORKLOAD_THRESHOLD = 100e6
 
     def __init__(
         self,
@@ -171,8 +179,165 @@ class TaskList:
         nucpos: int,
         ovRMSD: float,
     ) -> None:
-        proto_align: Dict[Tuple[int, int], Rotation] = {}
-        tasks: List[Task] = []
+        self._initialize_state(
+            origin_rotaconformers=origin_rotaconformers,
+            prototype_clusters=prototype_clusters,
+            prototypes_scalevec=prototypes_scalevec,
+            conf_prototypes=conf_prototypes,
+            load_membership=load_membership,
+            motif=motif,
+            nucpos=nucpos,
+            ovRMSD=ovRMSD,
+        )
+
+        self._build_tasks(
+            all_proto=all_proto,
+            source_confs=source_confs,
+            conf_prototypes=conf_prototypes,
+            prototypes=prototypes,
+            prev_lib=prev_lib,
+            origin_rotaconformers=origin_rotaconformers,
+            lib=lib,
+            crmsd_ok=crmsd_ok,
+            superimpose=superimpose,
+        )
+
+        self._context["proto_align"] = self._proto_align
+
+        for task in self._tasks:
+            task.finalize()
+            task.set_context(self._context)
+
+    @property
+    def proto_align(self) -> Dict[Tuple[int, int], Rotation]:
+        return self._proto_align
+
+    def __len__(self) -> int:
+        return len(self._tasks)
+
+    def __getitem__(self, index: int) -> Task:
+        return self._tasks[index]
+
+    def __iter__(self):
+        return iter(self._tasks)
+
+    def to_npz(self, filepath: str, *, compressed: bool = True) -> None:
+        """Persist the task list to a single NPZ archive."""
+
+        tasks = self._tasks
+        if not tasks:
+            raise ValueError("TaskList is empty; nothing to serialize")
+
+        prototypes = np.array([task.prototype for task in tasks], dtype=int)
+        rc_source = np.array([task.rc_source for task in tasks], dtype=int)
+        rc_target = np.array([task.rc_target for task in tasks], dtype=int)
+        prepared = np.array([task._prepared for task in tasks], dtype=bool)
+
+        def _concat_int(arrays: List[np.ndarray]) -> np.ndarray:
+            if not arrays:
+                return np.array([], dtype=int)
+            return np.concatenate(arrays).astype(int, copy=False)
+
+        target_arrays = [task.target_conformers for task in tasks if task.target_conformers is not None]
+        source_arrays = [task.source_conformers for task in tasks if task.source_conformers is not None]
+
+        target_counts = np.array(
+            [len(task.target_conformers) if task.target_conformers is not None else 0 for task in tasks],
+            dtype=int,
+        )
+        source_counts = np.array(
+            [len(task.source_conformers) if task.source_conformers is not None else 0 for task in tasks],
+            dtype=int,
+        )
+
+        targets_concat = _concat_int(target_arrays)
+        sources_concat = _concat_int(source_arrays)
+
+        membership_shapes = np.zeros((len(tasks), 2), dtype=int)
+        membership_data_parts: List[np.ndarray] = []
+        for idx, task in enumerate(tasks):
+            if task.membership is not None:
+                membership_shapes[idx] = task.membership.shape
+                membership_data_parts.append(task.membership.ravel())
+
+        membership_data = (
+            np.concatenate(membership_data_parts) if membership_data_parts else np.array([], dtype=np.uint8)
+        )
+
+        def _collect_matrix(tasks: List[Task], attr: str) -> Tuple[np.ndarray, np.ndarray]:
+            shapes = np.zeros((len(tasks), 2), dtype=int)
+            parts: List[np.ndarray] = []
+            for idx, task in enumerate(tasks):
+                value = getattr(task, attr)
+                if value is not None:
+                    shapes[idx] = value.shape
+                    parts.append(value.ravel())
+            data = np.concatenate(parts) if parts else np.array([], dtype=np.uint8)
+            return data, shapes
+
+        rmsd_upper_data, rmsd_upper_shapes = _collect_matrix(tasks, "rmsd_upper")
+        rmsd_lower_data, rmsd_lower_shapes = _collect_matrix(tasks, "rmsd_lower")
+
+        saver = np.savez_compressed if compressed else np.savez
+        saver(
+            filepath,
+            prototype=prototypes,
+            rc_source=rc_source,
+            rc_target=rc_target,
+            prepared=prepared,
+            target_conformers=targets_concat,
+            target_counts=target_counts,
+            source_conformers=sources_concat,
+            source_counts=source_counts,
+            membership_data=membership_data,
+            membership_shapes=membership_shapes,
+            rmsd_upper_data=rmsd_upper_data,
+            rmsd_upper_shapes=rmsd_upper_shapes,
+            rmsd_lower_data=rmsd_lower_data,
+            rmsd_lower_shapes=rmsd_lower_shapes,
+        )
+
+    def _initialize_state(
+        self,
+        *,
+        origin_rotaconformers: Dict[int, Rotation],
+        prototype_clusters: Dict[int, Rotation],
+        prototypes_scalevec: np.ndarray,
+        conf_prototypes: Sequence[int],
+        load_membership,
+        motif: str,
+        nucpos: int,
+        ovRMSD: float,
+    ) -> None:
+        self._tasks: List[Task] = []
+        self._proto_align: Dict[Tuple[int, int], Rotation] = {}
+        self._context = {
+            "origin_rotaconformers": origin_rotaconformers,
+            "prototype_clusters": prototype_clusters,
+            "prototypes_scalevec": prototypes_scalevec,
+            "conf_prototypes": conf_prototypes,
+            "load_membership": load_membership,
+            "motif": motif,
+            "nucpos": nucpos,
+            "ovRMSD": ovRMSD,
+            "membership_bins": self.MEMBERSHIP_BINS,
+        }
+
+    def _build_tasks(
+        self,
+        *,
+        all_proto: Sequence[int],
+        source_confs: Dict[int, Iterable[int]],
+        conf_prototypes: Sequence[int],
+        prototypes: np.ndarray,
+        prev_lib,
+        origin_rotaconformers: Dict[int, Rotation],
+        lib,
+        crmsd_ok: np.ndarray,
+        superimpose,
+    ) -> None:
+        tasks = self._tasks
+        proto_align = self._proto_align
 
         for proto in all_proto:
             conf_pairs = {
@@ -208,7 +373,7 @@ class TaskList:
                 for source_conf in conf_pairs[target_conf]:
                     rc = origin_rotaconformers[source_conf]
                     curr_task.add_source_conformer(source_conf, len(rc))
-                while curr_task.rc_target * curr_task.rc_source < 100e6:
+                while curr_task.rc_target * curr_task.rc_source < self.WORKLOAD_THRESHOLD:
                     best_target_conf = None
                     lowest_waste = None
                     for candidate_conf in target_conf_list:
@@ -246,36 +411,3 @@ class TaskList:
                         if not curr_task.has_source_conformer(source_conf):
                             rc = origin_rotaconformers[source_conf]
                             curr_task.add_source_conformer(source_conf, len(rc))
-
-        context = {
-            "origin_rotaconformers": origin_rotaconformers,
-            "proto_align": proto_align,
-            "prototype_clusters": prototype_clusters,
-            "prototypes_scalevec": prototypes_scalevec,
-            "conf_prototypes": conf_prototypes,
-            "load_membership": load_membership,
-            "motif": motif,
-            "nucpos": nucpos,
-            "ovRMSD": ovRMSD,
-            "membership_bins": self.MEMBERSHIP_BINS,
-        }
-
-        for task in tasks:
-            task.finalize()
-            task.set_context(context)
-
-        self._proto_align = proto_align
-        self._tasks = tasks
-
-    @property
-    def proto_align(self) -> Dict[Tuple[int, int], Rotation]:
-        return self._proto_align
-
-    def __len__(self) -> int:
-        return len(self._tasks)
-
-    def __getitem__(self, index: int) -> Task:
-        return self._tasks[index]
-
-    def __iter__(self):
-        return iter(self._tasks)
