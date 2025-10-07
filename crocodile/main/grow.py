@@ -1,6 +1,9 @@
+import os
 import numpy as np
 from tqdm import tqdm, trange
 from scipy.spatial.transform import Rotation
+
+from juliacall import Main
 
 """
 from crocodile.nuc.all_fit import (
@@ -104,7 +107,8 @@ def _load_membership(motif, nucpos, conformer, nclust):
 
     membership = np.empty((nclust, membership0.shape[1]), np.uint8)
     membership[::2] = membership0 & 15
-    membership[1::2] = membership0 >> 4
+    remain = len(membership[1::2])
+    membership[1::2] = membership0[:remain] >> 4
     return membership
 
 
@@ -119,7 +123,6 @@ def _grow_from_fragment(command, constraints, state):
 
     origin = command["origin"]
     origin_poses = np.load(f"state/{origin}.npy")  ###
-    origin_poses = origin_poses[:1000]  ###
     prev_frag = int(open(f"state/{origin}.FRAG").read())  ###
     prev_key = "frag" + str(prev_frag)
 
@@ -138,7 +141,7 @@ def _grow_from_fragment(command, constraints, state):
         if p["down"] == frag0 and p["up"] == frag1:
             ovRMSD = p["ovRMSD"]
             cRMSD = p["cRMSD"]
-            constraint_pair = p
+            constraint_pair = p  # TODO: primary pair
             break
     else:
         exit("Cannot find constraint fragment pair")
@@ -178,7 +181,6 @@ def _grow_from_fragment(command, constraints, state):
             libf.rotaconformers[curr_prototype_cluster_indices]
         )
         prototype_clusters[prototype_index] = curr_prototype_clusters
-        print(prototype_index, len(curr_prototype_clusters))
 
     lib = libf.create(
         pdb_code=pdb_code,
@@ -203,15 +205,22 @@ def _grow_from_fragment(command, constraints, state):
     rc = np.array(list(set(rc)))
     origin_rotaconformer_list = np.stack((rc / 100000, rc % 100000), axis=1)
     print(f"Unique origin rotaconformers: {len(origin_rotaconformer_list)}")
-    lib_crmsd = np.empty((len(origin_conformer_list), len(lib_coors)))
-    lib_cmat = np.empty((len(origin_conformer_list), len(lib_coors), 3, 3))
-    for confnr, conf in enumerate(tqdm(origin_conformer_list)):
-        curr_lib_cmat, curr_lib_crmsd = superimpose_array(
-            lib_coors, prev_lib_coors[conf]
-        )
-        lib_cmat[confnr] = curr_lib_cmat
-        lib_crmsd[confnr] = curr_lib_crmsd
-    lib_crmsd_ok = lib_crmsd <= cRMSD
+
+    trimotif = prev_seq[0].replace("G", "A").replace("U", "C") + motif
+    crmsd_file = os.path.join(f"rotamember/crmsd_full_matrix_{trimotif}.npy")
+    if not os.path.exists(crmsd_file):
+        crmsd = []
+        for conf_coors in tqdm(
+            prev_lib_coors, desc="cRMSD file not found, calculating on the fly..."
+        ):
+            _, curr_crmsd = superimpose_array(lib_coors, conf_coors)
+            crmsd.append(curr_crmsd)
+        crmsd = np.stack(crmsd)
+        np.save(crmsd_file, crmsd)
+    else:
+        crmsd = np.load(crmsd_file)
+    crmsd_ok = crmsd <= cRMSD
+    lib_crmsd_ok = crmsd_ok[origin_conformer_list]
     ori_cconf, target_cconf = np.where(lib_crmsd_ok)
     target_confs = []
     ori_cconf_pos0 = np.searchsorted(ori_cconf, np.arange(len(origin_conformer_list)))
@@ -249,7 +258,7 @@ def _grow_from_fragment(command, constraints, state):
         f"Unique target conformers: {len(target_conformer_list)} / {len(lib.coordinates)}"
     )
     origin_rotaconformers = {}
-    for conf in tqdm(origin_conformer_list):
+    for conf in origin_conformer_list:
         r = prev_lib.get_rotamers(conf)
         mask = origin_poses["conformer"] == conf
         rota = origin_poses["rotamer"][mask]
@@ -312,6 +321,7 @@ def _grow_from_fragment(command, constraints, state):
 
         def new_task():
             curr_task = {
+                "nr": len(tasks),
                 "prototype": proto,
                 "target_conformers": [],
                 "source_conformers": set(),
@@ -335,17 +345,29 @@ def _grow_from_fragment(command, constraints, state):
                 curr_task["source_conformers"].add(int(source_conf))
                 rc = origin_rotaconformers[source_conf]
                 curr_task["rc_source"] += len(rc)
-            while curr_task["rc_target"] * curr_task["rc_source"] < 50e6:
+            while curr_task["rc_target"] * curr_task["rc_source"] < 100e6:
                 best_target_conf = None
                 lowest_waste = None
                 for target_conf in target_conf_list:
                     if target_conf in target_conf_done:
                         continue
                     waste = 0
+                    rc_target_conf = len(lib.get_rotamers(target_conf))
                     for source_conf in conf_pairs[target_conf]:
                         if source_conf not in curr_task["source_conformers"]:
                             rc = origin_rotaconformers[source_conf]
+                            assert len(rc) and curr_task["rc_target"]
                             waste += len(rc) * curr_task["rc_target"]
+                        else:
+                            assert crmsd_ok[source_conf, target_conf]
+                    for source_conf in curr_task["source_conformers"]:
+                        if source_conf not in conf_pairs[target_conf]:
+                            rc = origin_rotaconformers[source_conf]
+                            assert len(rc) and rc_target_conf
+                            waste += len(rc) * rc_target_conf
+                        else:
+                            assert crmsd_ok[source_conf, target_conf]
+
                     if lowest_waste is None or waste < lowest_waste:
                         best_target_conf = target_conf
                         lowest_waste = waste
@@ -358,33 +380,43 @@ def _grow_from_fragment(command, constraints, state):
                 curr_task["rc_target"] += len(rc)
                 curr_task["target_conformers"].append(int(best_target_conf))
                 for source_conf in conf_pairs[best_target_conf]:
-                    curr_task["source_conformers"].add(int(source_conf))
-                    rc = origin_rotaconformers[source_conf]
-                    curr_task["rc_source"] += len(rc)
+                    assert crmsd_ok[source_conf, best_target_conf]
+                    source_conf = int(source_conf)
+                    if source_conf not in curr_task["source_conformers"]:
+                        curr_task["source_conformers"].add(source_conf)
+                        rc = origin_rotaconformers[source_conf]
+                        curr_task["rc_source"] += len(rc)
+
+    for curr_task in tasks:
+        a = np.array(curr_task["target_conformers"])
+        a = np.sort(a)
+        curr_task["target_conformers"] = a
+        a = np.array(list(curr_task["source_conformers"]))
+        a = np.sort(a)
+        curr_task["source_conformers"] = a
 
     membership_bins = np.array(
         [1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5, 3.75, 4, 4.5, 5]
     )
 
-    def run_task(tasknr):
+    def prepare_task(tasknr):
 
+        semaphore.acquire()
         task = tasks[tasknr]
+
         csource_conformers, ctarget_conformers = (
-            sorted(list(task["source_conformers"])),
+            task["source_conformers"],
             task["target_conformers"],
         )
         csource_rotaconformers = Rotation.concatenate(
             [origin_rotaconformers[conf] for conf in csource_conformers]
-        )
-        ctarget_rotaconformers = np.concatenate(
-            [lib.get_rotamers(conf) for conf in ctarget_conformers]
         )
 
         proto = task["prototype"]
         clusters = prototype_clusters[proto]
         scalevec = prototypes_scalevec[proto]
 
-        rmsd = np.empty((len(csource_rotaconformers), len(clusters)))
+        rmsd = np.empty((len(clusters), len(csource_rotaconformers)))
         for n, cluster in enumerate(clusters):
             rr = csource_rotaconformers * cluster.inv()
             ax = rr.as_rotvec()
@@ -394,62 +426,119 @@ def _grow_from_fragment(command, constraints, state):
             fac = (np.cos(ang) - 1) ** 2 + np.sin(ang) ** 2
             cross = (scalevec * scalevec) * (1 - ax * ax)
             curr_rmsd = np.sqrt(fac * cross.sum(axis=-1))
-            rmsd[:, n] = curr_rmsd
+            rmsd[n, :] = curr_rmsd
 
         rmsd_upper = np.digitize(rmsd + ovRMSD, membership_bins).astype(np.uint8)
         rmsd_lower = np.digitize(rmsd - ovRMSD, membership_bins).astype(np.uint8)
         # up to here, for 20k structures: 10s
 
+        membership = []
         for conformer in ctarget_conformers:
             assert conf_prototypes[conformer] == proto, (
                 conformer,
                 conf_prototypes[conformer],
                 proto,
             )
-            conformer = 1200  ##
-            # nclust = len(prototype_clusters[proto])
-            nclust = len(prototype_clusters[conf_prototypes[conformer]])  ###
-            _load_membership(motif, nucpos, conformer, nclust)
+            nclust = len(prototype_clusters[proto])
+            curr_membership = _load_membership(motif, nucpos, conformer, nclust)
+            membership.append(curr_membership)
 
-        with runner:
-            pass
+        membership = np.concatenate(membership, axis=1)
+        assert membership.shape[1] == task["rc_target"], (
+            membership.shape[1],
+            task["rc_target"],
+        )
+        assert rmsd.shape[1] == task["rc_source"], (rmsd.shape[1], task["rc_source"])
+        return task, membership, rmsd_upper, rmsd_lower
 
     from threading import Semaphore
-    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import (
+        ThreadPoolExecutor,
+        wait,
+        FIRST_COMPLETED,
+        ALL_COMPLETED,
+    )
 
-    runner = Semaphore(10)  # run 10 Julia instances at a time
+    semaphore = Semaphore(
+        10
+    )  # pre-load up to 10 tasks. After that, wait until a load has been consumed
 
-    with ThreadPoolExecutor(max_workers=20) as executor:  # load data for 20
-        candidates = list(
-            tqdm(executor.map(run_task, range(len(tasks))), total=len(tasks))
-        )
+    ncand = 0
+    with ThreadPoolExecutor(
+        max_workers=min(len(tasks), 5)
+    ) as executor:  # load data for 5
+        pending = [
+            executor.submit(prepare_task, tasknr) for tasknr in range(len(tasks))
+        ]
+        ncomp = 0
+        with tqdm(None, total=len(tasks)) as progress:
+            while pending:
+                done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                for fut in done:
+                    task, membership, rmsd_upper, rmsd_lower = fut.result()
+                    csource_rotaconf = rmsd_upper.shape[1]
+                    ctarget_rotaconf = membership.shape[1]
+                    ncomp += membership.shape[1] * rmsd_upper.shape[1]
+                    semaphore.release()
+                    progress.update()
 
-    exit()
-    # ori_rotaconf
-    # for
+                    membership = membership.copy()
+                    rmsd_upper = rmsd_upper.copy()
+                    rmsd_lower = rmsd_lower.copy()
 
-    anchor_tensor, anchor_scalevec = tensorlib.get_structure_tensor(anchor_coors)
-    lib_indices = np.arange(len(lib_coors)).astype(int)
-    if not only_base:
-        # 1. calculate merged scalevecs => lib_scalevec
-        # 2. apply cRMSD filter to lib_cmat, lib_indices
-        raise NotImplementedError
-    else:
-        lib_scalevec = np.repeat(anchor_scalevec, len(lib_coors))
-    lib_cmat_t = lib_cmat.dot(anchor_tensor)
+                    source_rotaconf_counts, candidates = (
+                        Main.CrocoCandidates.compute_candidates(
+                            membership.copy(),
+                            rmsd_upper.copy(),
+                            rmsd_lower.copy(),
+                        )
+                    )
+                    source_rotaconf_counts = source_rotaconf_counts.to_numpy()
+                    candidates = candidates.to_numpy() - 1
 
-    for n in trange(len(lib_indices)):
-        conf = lib_indices[n]
-        scalevec = lib_scalevec[n]
-        curr_lib_cmat_t = lib_cmat_t[n]
-        rotamers0 = lib.get_rotamers(conf)
-        rotamers = Rotation.from_rotvec(rotamers0)
-        rotamers_t = rotamers.as_matrix().dot(lib_cmat_t[n])
-        continue
-        msd_conformational = lib_crmsd[n] ** 2
-        msd_rotational = tensorlib.get_msd(rotamers_t, None, scalevec)
-        msd_maxtrans = ovRMSD**2 - msd_conformational - msd_rotational
-        # print(msd_maxtrans.shape, (msd_maxtrans>0).sum(), msd_maxtrans.max())
+                    csource_conformers, ctarget_conformers = (
+                        task["source_conformers"],
+                        task["target_conformers"],
+                    )
+                    source_rotaconf_boundaries = np.cumsum(source_rotaconf_counts)
+                    source_conf_boundaries = np.cumsum(
+                        [
+                            len(origin_rotaconformers[conf])
+                            for conf in csource_conformers
+                        ]
+                    )
+                    assert source_conf_boundaries[-1] == csource_rotaconf
+
+                    target_conf_boundaries = np.cumsum(
+                        [len(lib.get_rotamers(conf)) for conf in ctarget_conformers]
+                    )
+                    assert target_conf_boundaries[-1] == ctarget_rotaconf
+
+                    ind_source_rotaconf = np.searchsorted(
+                        source_rotaconf_boundaries - 1,
+                        np.arange(len(candidates)),
+                    )
+                    ii_source_conf = np.searchsorted(
+                        source_conf_boundaries - 1,
+                        np.arange(csource_rotaconf),
+                    )
+                    ind_source_conf = ii_source_conf[ind_source_rotaconf]
+                    ind_target_conf = np.searchsorted(
+                        target_conf_boundaries, candidates
+                    )
+
+                    cand_source_conf = csource_conformers[ind_source_conf]
+                    cand_target_conf = ctarget_conformers[ind_target_conf]
+                    cand_conf_rmsd = crmsd[cand_source_conf, cand_target_conf]
+                    cand_conf_rmsd_mask = crmsd_ok[cand_source_conf, cand_target_conf]
+
+                    candidates = candidates[cand_conf_rmsd_mask]
+                    cand_source_conf = cand_source_conf[cand_conf_rmsd_mask]
+                    cand_target_conf = cand_target_conf[cand_conf_rmsd_mask]
+
+                    ncand += cand_conf_rmsd_mask.sum()
+
+    print(ncand, ncomp)  # ncand: 5955883
 
 
 def grow(command, constraints, state):
