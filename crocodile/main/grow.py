@@ -3,8 +3,6 @@ import numpy as np
 from tqdm import tqdm, trange
 from scipy.spatial.transform import Rotation
 
-from juliacall import Main
-
 GRIDSPACING = np.sqrt(3) / 3
 """
 from crocodile.nuc.all_fit import (
@@ -343,6 +341,31 @@ def _grow_from_fragment(command, constraints, state):
         10
     )  # pre-load up to 10 tasks. After that, wait until a load has been consumed
 
+    for n in trange(len(tasks)):
+        task = tasks[n]
+        task.prepare_task(semaphore)
+        semaphore.release()
+        task.run_task()
+
+    """
+    with ThreadPoolExecutor(
+        max_workers=min(len(tasks), 20)
+    ) as executor:  # load data for 20
+        pending = {
+            executor.submit(tasks[tasknr].prepare_task, semaphore): tasknr
+            for tasknr in range(len(tasks))
+        }
+        with tqdm(None, total=len(tasks)) as progress:
+            while pending:
+                done, _ = wait(set(pending), return_when=FIRST_COMPLETED)
+                for fut in done:
+                    idx = pending.pop(fut)
+                    fut.result()
+                    semaphore.release()
+                    progress.update()
+                    process_task(tasks[idx])
+    """
+
     candpool = {}
     for proto in all_proto:
         p = {
@@ -356,8 +379,7 @@ def _grow_from_fragment(command, constraints, state):
         }
         candpool[proto] = p
 
-    def process_task(task):
-        proto_align = tasks.proto_align
+    def process(task):
         assert task.membership is not None
         assert task.rmsd_upper is not None
         assert task.rmsd_lower is not None
@@ -369,13 +391,11 @@ def _grow_from_fragment(command, constraints, state):
         csource_rotaconf = rmsd_upper.shape[1]
         ctarget_rotaconf = membership.shape[1]
 
-        source_rotaconf_counts, candidates = Main.CrocoCandidates.compute_candidates(
-            membership,
-            rmsd_upper,
-            rmsd_lower,
-        )
-        source_rotaconf_counts = source_rotaconf_counts.to_numpy()
-        candidates = candidates.to_numpy() - 1
+        task.run_task()
+        source_rotaconf_counts = task.source_rotaconf_counts
+        candidates = task.candidates
+        assert source_rotaconf_counts is not None
+        assert candidates is not None
 
         csource_conformers, ctarget_conformers = (
             task.source_conformers,
@@ -467,29 +487,7 @@ def _grow_from_fragment(command, constraints, state):
         p["remain_msd"].append(cand_msd_remain)
 
     for n in trange(len(tasks)):
-        task = tasks[n]
-        task.prepare_task(semaphore)
-        semaphore.release()
-        process_task(task)
-
-    """
-    with ThreadPoolExecutor(
-        max_workers=min(len(tasks), 20)
-    ) as executor:  # load data for 20
-        pending = {
-            executor.submit(tasks[tasknr].prepare_task, semaphore): tasknr
-            for tasknr in range(len(tasks))
-        }
-        with tqdm(None, total=len(tasks)) as progress:
-            while pending:
-                done, _ = wait(set(pending), return_when=FIRST_COMPLETED)
-                for fut in done:
-                    idx = pending.pop(fut)
-                    fut.result()
-                    semaphore.release()
-                    progress.update()
-                    process_task(tasks[idx])
-    """
+        process(tasks[n])
 
     for p in candpool.values():
         for k in p:
