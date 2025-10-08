@@ -25,6 +25,7 @@ class CandidatePool:
         task,
         *,
         origin_rotaconformers,
+        origin_rotaconformer_indices,
         prev_lib_offset,
         lib_offset,
         lib,
@@ -34,7 +35,9 @@ class CandidatePool:
         source_rotaconf_counts = task.source_rotaconf_counts
         candidates = task.candidates
         if source_rotaconf_counts is None or candidates is None:
-            raise RuntimeError("Task must be prepared before processing candidate pool")
+            raise RuntimeError(
+                "Task must be prepared and run before processing candidate pool"
+            )
 
         csource_conformers = task.source_conformers
         ctarget_conformers = task.target_conformers
@@ -66,6 +69,7 @@ class CandidatePool:
             source_conf_boundaries - 1,
             np.arange(csource_rotaconf),
         )
+
         ind_source_conf = ii_source_conf[ind_source_rotaconf]
         ind_target_conf = np.searchsorted(target_conf_boundaries, candidates)
 
@@ -76,25 +80,25 @@ class CandidatePool:
             [origin_rotaconformers[conf] for conf in csource_conformers]
         )
         csource_rotaconformers_trueind = np.concatenate(
-            [
-                np.arange(len(origin_rotaconformers[conf]), dtype=int)
-                for conf in csource_conformers
-            ]
+            [origin_rotaconformer_indices[conf] for conf in csource_conformers]
         )
-
-        cand_source_rotaconf_trueind = csource_rotaconformers_trueind[
-            ind_source_rotaconf
-        ]
         source_mat = csource_rotaconformers[ind_source_rotaconf].as_matrix()
         trans_source = np.einsum(
             "ik,ikl->il", prev_lib_offset[cand_source_conf], source_mat
         )
+        cand_source_rotaconf_trueind = csource_rotaconformers_trueind[
+            ind_source_rotaconf
+        ]
+
         cand_target_rotaconf_trueind = ctarget_rotaconformers_trueind[candidates]
         target_rotvec = ctarget_rotaconformers[candidates]
         target_mat = Rotation.from_rotvec(target_rotvec).as_matrix()
         trans_target = np.einsum("ik,ikl->il", lib_offset[cand_target_conf], target_mat)
         dif_trans = trans_source - trans_target
-        err_disc_trans = dif_trans - GRIDSPACING * np.round(dif_trans / GRIDSPACING)
+        disc_dif0 = np.abs(dif_trans % GRIDSPACING)
+        disc_dif1 = np.abs(1 - disc_dif0)
+        disc_dif = np.minimum(disc_dif0, disc_dif1)
+        err_disc_trans = dif_trans - disc_dif
         rmsd_disc_trans = np.sqrt((err_disc_trans**2).sum(axis=1))
 
         cand_conf_rmsd = crmsd[cand_source_conf, cand_target_conf]
