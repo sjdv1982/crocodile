@@ -1,9 +1,10 @@
+import copy
 import os
 import numpy as np
 from tqdm import tqdm, trange
 from scipy.spatial.transform import Rotation
 
-GRIDSPACING = np.sqrt(3) / 3
+
 """
 from crocodile.nuc.all_fit import (
     all_fit,
@@ -16,6 +17,7 @@ from crocodile.nuc.library import LibraryFactory
 from crocodile.main.superimpose import superimpose_array, superimpose
 from crocodile.main.tasks import TaskList
 from crocodile.main import tensorlib
+from crocodile.main.candidate_pool import CandidatePool
 
 
 def _grow_from_anchor(command, constraints, state):
@@ -378,125 +380,63 @@ def _grow_from_fragment(command, constraints, state):
         tasks.to_npz(npz_filename)
         print("/SAVE")
 
-    candpool = {}
-    for proto in all_proto:
-        p = {
-            "source_conformer": [],
-            "source_rotamer": [],
-            "source_mat": [],
-            "target_conformer": [],
-            "target_rotamer": [],
-            "target_mat": [],
-            "remain_msd": [],
-        }
-        candpool[proto] = p
-
-    def process(task):
-        source_rotaconf_counts = task.source_rotaconf_counts
-        candidates = task.candidates
-        assert source_rotaconf_counts is not None
-        assert candidates is not None
-
-        csource_conformers, ctarget_conformers = (
-            task.source_conformers,
-            task.target_conformers,
-        )
-        source_rotaconf_boundaries = np.cumsum(source_rotaconf_counts)
-        source_conf_boundaries = np.cumsum(
-            [len(origin_rotaconformers[conf]) for conf in csource_conformers]
-        )
-        csource_rotaconf = source_conf_boundaries[-1]
-
-        ctarget_rotaconformers0 = [
-            lib.get_rotamers(conf) for conf in ctarget_conformers
-        ]
-        target_conf_boundaries = np.cumsum([len(c) for c in ctarget_rotaconformers0])
-        ctarget_rotaconformers = np.concatenate(ctarget_rotaconformers0)
-
-        ctarget_rotaconformers_trueind = np.concatenate(
-            [
-                np.arange(len(lib.get_rotamers(conf)), dtype=int)
-                for conf in ctarget_conformers
-            ]
-        )
-
-        ind_source_rotaconf = np.searchsorted(
-            source_rotaconf_boundaries - 1,
-            np.arange(len(candidates)),
-        )
-        ii_source_conf = np.searchsorted(
-            source_conf_boundaries - 1,
-            np.arange(csource_rotaconf),
-        )
-        ind_source_conf = ii_source_conf[ind_source_rotaconf]
-        ind_target_conf = np.searchsorted(target_conf_boundaries, candidates)
-
-        cand_source_conf = csource_conformers[ind_source_conf]
-        cand_target_conf = ctarget_conformers[ind_target_conf]
-
-        csource_rotaconformers = Rotation.concatenate(
-            [origin_rotaconformers[conf] for conf in csource_conformers]
-        )
-        csource_rotaconformers_trueind = np.concatenate(
-            [
-                np.arange(len(origin_rotaconformers[conf]), dtype=int)
-                for conf in csource_conformers
-            ]
-        )
-
-        cand_source_rotaconf_trueind = csource_rotaconformers_trueind[
-            ind_source_rotaconf
-        ]
-        source_mat = csource_rotaconformers[ind_source_rotaconf].as_matrix()
-        trans_source = np.einsum(
-            "ik,ikl->il", prev_lib_offset[cand_source_conf], source_mat
-        )
-        cand_target_rotaconf_trueind = ctarget_rotaconformers_trueind[
-            candidates
-        ]  # alternative: subtract conf boundary from candidates for more speed
-        target_rotvec = ctarget_rotaconformers[candidates]
-        target_mat = Rotation.from_rotvec(target_rotvec).as_matrix()
-        trans_target = np.einsum("ik,ikl->il", lib_offset[cand_target_conf], target_mat)
-        dif_trans = trans_source - trans_target
-        err_disc_trans = dif_trans - GRIDSPACING * np.round(dif_trans / GRIDSPACING)
-        assert err_disc_trans.ndim == 2
-        rmsd_disc_trans = np.sqrt((err_disc_trans**2).sum(axis=1))
-
-        cand_conf_rmsd = crmsd[cand_source_conf, cand_target_conf]
-        cand_msd_remain = ovRMSD**2 - cand_conf_rmsd**2 - rmsd_disc_trans
-
-        cand_mask = cand_msd_remain > 0
-
-        candidates = candidates[cand_mask]
-        cand_msd_remain = cand_msd_remain[cand_mask]
-        cand_source_conf = cand_source_conf[cand_mask]
-        cand_target_conf = cand_target_conf[cand_mask]
-        source_mat = source_mat[cand_mask]
-        target_mat = target_mat[cand_mask]
-
-        print(len(cand_mask), cand_mask.sum())
-        p = candpool[task.prototype]
-        p["source_conformer"].append(cand_source_conf)
-        p["source_rotamer"].append(cand_source_rotaconf_trueind[cand_mask])
-        p["source_mat"].append(source_mat)
-        p["target_conformer"].append(cand_target_conf)
-        p["target_rotamer"].append(cand_target_rotaconf_trueind[cand_mask])
-        p["target_mat"].append(target_mat)
-        p["remain_msd"].append(cand_msd_remain)
+    candpool = CandidatePool(all_proto)
 
     for n in trange(len(tasks)):
-        process(tasks[n])
+        candpool.process(
+            tasks[n],
+            origin_rotaconformers=origin_rotaconformers,
+            prev_lib_offset=prev_lib_offset,
+            lib_offset=lib_offset,
+            lib=lib,
+            crmsd=crmsd,
+            ovRMSD=ovRMSD,
+        )
 
-    for p in candpool.values():
-        for k in p:
-            p[k] = np.concatenate(p[k])
-        for k in p:
-            assert len(p[k]) == len(p["remain_msd"]), (
-                k,
-                len(p[k]),
-                len(p["remain_msd"]),
-            )
-    print("cand", sum([len(p["remain_msd"]) for p in candpool.values()]))
+    poses6 = np.load("TEST/frag6-rx/poses-filtered.npy")
+    poses7 = np.load("TEST/frag7-fwd/poses.npy")
+    origins = np.loadtxt("TEST/frag7-fwd/poses-origins.txt", dtype=int) - 1
+    poses6 = poses6[np.unique(origins)]
+    poses6_conf = poses6["conformer"]
+    poses6_rota = poses6["rotamer"]
+    poses7_conf = poses7["conformer"]
+    poses7_rota = poses7["rotamer"]
+    candpool2 = copy.deepcopy(candpool)
+
+    candpool.finalize()
+    cand = candpool.concatenate_prototypes()
+    print("cand", candpool.total_candidates())
+
+    def check(cand):
+        def rc_key(conf, rota):
+            assert conf.ndim == 1 and rota.ndim == 1
+            return 100000 * conf.astype(np.uint32) + rota
+
+        rc6 = set(rc_key(poses6_conf, poses6_rota))
+        rc7 = set(rc_key(poses7_conf, poses7_rota))
+
+        src_confs = np.unique(cand["source_conformer"])
+        target_confs = np.unique(cand["target_conformer"])
+        src_rc = set(rc_key(cand["source_conformer"], cand["source_rotamer"]))
+        target_rc = set(rc_key(cand["target_conformer"], cand["target_rotamer"]))
+        for conf in np.unique(poses6_conf):
+            if not conf in src_confs:
+                print("SRC CONF MISSING", conf)
+        for conf in np.unique(poses7_conf):
+            if not conf in target_confs:
+                print("TARGET CONF MISSING", conf)
+        print("SRC RC MISSING", len(rc6.difference(src_rc)), len(rc6))
+        print("TARGET RC MISSING", len(rc7.difference(target_rc)), len(rc7))
+
+    check(cand)
+    print("OK")
+    print()
+
+    candpool2.apply_cand_mask()
+    candpool2.finalize()
+    print("cand2", candpool2.total_candidates())
+    cand2 = candpool2.concatenate_prototypes()
+    check(cand2)
 
 
 def grow(command, constraints, state):
