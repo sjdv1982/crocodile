@@ -5,6 +5,8 @@ from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tupl
 import numpy as np
 from scipy.spatial.transform import Rotation
 
+from crocodile.main.superimpose import superimpose_array, superimpose
+
 
 class Task:
     """Represents a single workload unit for rotaconformer processing."""
@@ -14,11 +16,11 @@ class Task:
         *,
         nr: int,
         prototype: int,
+        context: Optional[Dict[str, object]],
         target_conformers: Iterable[int] | None = None,
         source_conformers: Iterable[int] | None = None,
         rc_source: int = 0,
         rc_target: int = 0,
-        context: Optional[Dict[str, object]] = None,
     ) -> None:
         self.nr = nr
         self.prototype = prototype
@@ -42,7 +44,7 @@ class Task:
         self.source_rotaconf_counts: Optional[np.ndarray] = None
         self.candidates: Optional[np.ndarray] = None
         self._prepared = False
-        self._processed = False
+        self._has_run = False
         self._finalized = False
 
     def add_target_conformer(self, conformer: int, rc_count: int) -> None:
@@ -109,9 +111,15 @@ class Task:
         clusters = prototype_clusters[proto]
         scalevec = prototypes_scalevec[proto]
 
-        csource_rotaconformers_align = Rotation.concatenate(
+        origin_rotaconformers2 = {
+            conf: origin_rotaconformers[conf].as_matrix()
+            for conf in origin_rotaconformers
+        }
+        csource_rotaconformers_align = np.concatenate(
             [
-                origin_rotaconformers[conf] * proto_align[proto, conf]
+                proto_align[proto, conf]
+                .dot(origin_rotaconformers2[conf])
+                .swapaxes(0, 1)
                 for conf in csource_conformers
             ]
         )
@@ -123,8 +131,9 @@ class Task:
         rmsd = np.empty((len(clusters), len(csource_rotaconformers)))
 
         for n, cluster in enumerate(clusters):
-            rr = csource_rotaconformers_align * cluster.inv()
-            ax = rr.as_rotvec()
+            rr = csource_rotaconformers_align.dot(cluster.inv().as_matrix())
+            ax = Rotation.from_matrix(rr).as_rotvec()
+
             ang = np.linalg.norm(ax, axis=1)
             ang = np.maximum(ang, 0.0001)
             ax /= ang[:, None]
@@ -164,7 +173,7 @@ class Task:
 
         if not self._prepared:
             raise RuntimeError("Task must be prepared before processing")
-        if self._processed:
+        if self._has_run:
             return
         assert self.membership is not None
         assert self.rmsd_upper is not None
@@ -180,7 +189,137 @@ class Task:
         self.rmsd_lower = None
         self.source_rotaconf_counts = source_rotaconf_counts.to_numpy()
         self.candidates = candidates.to_numpy() - 1
-        self._processed = True
+        self._has_run = True
+
+    def _run_task_tensor(self) -> None:
+        lib, prev_lib = self._context["lib"], self._context["prev_lib"]
+        prototype = self._context["prototypes"][self.prototype]
+        scalevec = self._context["prototypes_scalevec"][self.prototype]
+
+        source_proto_align = superimpose_array(
+            prev_lib.coordinates[self.source_conformers], prototype
+        )[0]
+        source_proto_align = {
+            conf: v for conf, v in zip(self.source_conformers, source_proto_align)
+        }
+
+        target_proto_align = superimpose_array(
+            lib.coordinates[self.target_conformers], prototype
+        )[0]
+        target_proto_align = {
+            conf: v for conf, v in zip(self.target_conformers, target_proto_align)
+        }
+
+        target_rotaconformers = {}
+        for target_conformer in self.target_conformers:
+            rotaconformers = lib.get_rotamers(target_conformer)
+            rotaconformers = Rotation.from_rotvec(rotaconformers).as_matrix()
+            rotaconformers_align = (
+                target_proto_align[target_conformer]
+                .T.dot(rotaconformers)
+                .swapaxes(0, 1)
+            )
+            target_rotaconformers[target_conformer] = rotaconformers_align
+
+        origin_rotaconformers = self._context["origin_rotaconformers"]
+
+        source_rotaconformers_align = {}
+        candidates = []
+        for source_conformer in self.source_conformers:
+            source_rotaconformers = origin_rotaconformers[source_conformer].as_matrix()
+            source_rotaconformers_align[source_conformer] = (
+                source_proto_align[source_conformer]
+                .T.dot(source_rotaconformers)
+                .swapaxes(0, 1)
+            )
+        for source_conformer in self.source_conformers:
+            for source_rota in source_rotaconformers_align[source_conformer]:
+                rota_candidates = []
+                pos = 0
+                for target_conformer in self.target_conformers:
+                    t_rotaconformers = target_rotaconformers[target_conformer]
+                    rr = t_rotaconformers.dot(source_rota.T)
+                    ax = Rotation.from_matrix(rr).as_rotvec()
+
+                    ang = np.linalg.norm(ax, axis=1)
+                    ang = np.maximum(ang, 0.0001)
+                    ax /= ang[:, None]
+                    fac = (np.cos(ang) - 1) ** 2 + np.sin(ang) ** 2
+                    cross = (scalevec * scalevec) * (1 - ax * ax)
+                    curr_rmsd = np.sqrt(fac * cross.sum(axis=-1))
+                    curr_candidates = np.where(curr_rmsd < self._context["ovRMSD"])[0]
+                    rota_candidates.append(curr_candidates + pos)
+                    pos += len(t_rotaconformers)
+                rota_candidates = np.concatenate(rota_candidates)
+                candidates.append(rota_candidates)
+        source_rotaconf_counts = np.array([len(cand) for cand in candidates])
+        candidates = np.concatenate(candidates)
+
+        self.membership = None
+        self.rmsd_upper = None
+        self.rmsd_lower = None
+        self.source_rotaconf_counts = source_rotaconf_counts
+        self.candidates = candidates
+        self._has_run = True
+
+    def _run_task_bruteforce(self) -> None:
+        from . import GRIDSPACING
+
+        lib, prev_lib = self._context["lib"], self._context["prev_lib"]
+
+        target_rotaconformers = {}
+        for target_conformer in self.target_conformers:
+            rotaconformers = lib.get_rotamers(target_conformer)
+            rotaconformers = Rotation.from_rotvec(rotaconformers).as_matrix()
+            target_rotaconformers[target_conformer] = rotaconformers
+
+        origin_rotaconformers = self._context["origin_rotaconformers"]
+
+        target_conformer_coordinates = lib.coordinates[target_conformer]
+        candidates = []
+        for source_conformer in self.source_conformers:
+            source_conformer_coordinates = prev_lib.coordinates[source_conformer]
+            for source_rota_nr, source_rota in enumerate(
+                origin_rotaconformers[source_conformer]
+            ):
+                reference = np.einsum(
+                    "kj,jl->kl", source_conformer_coordinates, source_rota.as_matrix()
+                )
+                refe_com = reference.mean(axis=0)
+                refe_c = reference - refe_com
+
+                rota_candidates = []
+                pos = 0
+                for target_conformer in self.target_conformers:
+                    target_conformer_coordinates = lib.coordinates[target_conformer]
+                    t_rotaconformers = target_rotaconformers[target_conformer]
+
+                    superpositions = np.einsum(
+                        "kj,ijl->ikl", target_conformer_coordinates, t_rotaconformers
+                    )
+                    superpositions_c = (
+                        superpositions - superpositions.mean(axis=1)[:, None]
+                    )
+                    dif = superpositions_c - refe_c
+                    curr_rmsd = np.sqrt(np.einsum("ijk,ijk->i", dif, dif) / len(refe_c))
+
+                    curr_candidates = np.where(curr_rmsd < self._context["ovRMSD"])[0]
+                    rota_candidates.append(curr_candidates + pos)
+                    pos += len(t_rotaconformers)
+                rota_candidates = np.concatenate(rota_candidates)
+                candidates.append(rota_candidates)
+        source_rotaconf_counts = np.array([len(cand) for cand in candidates])
+        candidates = np.concatenate(candidates)
+
+        self.membership = None
+        self.rmsd_upper = None
+        self.rmsd_lower = None
+        self.source_rotaconf_counts = source_rotaconf_counts
+        self.candidates = candidates
+        self._has_run = True
+
+
+Task.run_task = Task._run_task_tensor
 
 
 class TaskList:
@@ -195,6 +334,7 @@ class TaskList:
         self,
         *,
         origin_rotaconformers: Dict[int, Rotation],
+        prototypes: np.ndarray,
         prototype_clusters: Dict[int, Rotation],
         prototypes_scalevec: np.ndarray,
         conf_prototypes: Sequence[int],
@@ -202,9 +342,12 @@ class TaskList:
         motif: str,
         nucpos: int,
         ovRMSD: float,
+        lib,
+        prev_lib,
     ) -> None:
         self._initialize_state(
             origin_rotaconformers=origin_rotaconformers,
+            prototypes=prototypes,
             prototype_clusters=prototype_clusters,
             prototypes_scalevec=prototypes_scalevec,
             conf_prototypes=conf_prototypes,
@@ -212,10 +355,12 @@ class TaskList:
             motif=motif,
             nucpos=nucpos,
             ovRMSD=ovRMSD,
+            prev_lib=prev_lib,
+            lib=lib,
         )
 
     @property
-    def proto_align(self) -> Dict[Tuple[int, int], Rotation]:
+    def proto_align(self) -> Dict[Tuple[int, int], np.ndarray]:
         return self._proto_align
 
     def __len__(self) -> int:
@@ -238,7 +383,7 @@ class TaskList:
         rc_source = np.array([task.rc_source for task in tasks], dtype=int)
         rc_target = np.array([task.rc_target for task in tasks], dtype=int)
         prepared = np.array([task._prepared for task in tasks], dtype=bool)
-        processed = np.array([task._processed for task in tasks], dtype=bool)
+        processed = np.array([task._has_run for task in tasks], dtype=bool)
 
         def _concat_int(arrays: List[np.ndarray]) -> np.ndarray:
             if not arrays:
@@ -306,10 +451,10 @@ class TaskList:
         proto_align_items = sorted(self._proto_align.items())
         if proto_align_items:
             proto_align_keys = np.array([k for k, _ in proto_align_items], dtype=int)
-            proto_align_rotvec = np.stack([v.as_rotvec() for _, v in proto_align_items])
+            proto_align_rotmat = np.stack([v for _, v in proto_align_items])
         else:
             proto_align_keys = np.empty((0, 2), dtype=int)
-            proto_align_rotvec = np.empty((0, 3))
+            proto_align_rotmat = np.empty((0, 3, 3))
 
         src_rotaconf_count_parts = [
             task.source_rotaconf_counts
@@ -368,7 +513,7 @@ class TaskList:
             rmsd_lower_data=rmsd_lower_data,
             rmsd_lower_shapes=rmsd_lower_shapes,
             proto_align_keys=proto_align_keys,
-            proto_align_rotvec=proto_align_rotvec,
+            proto_align_rotmat=proto_align_rotmat,
             source_rotaconf_counts_data=src_rotaconf_counts_data,
             source_rotaconf_counts_counts=src_rotaconf_counts_counts,
             candidate_data=candidate_data,
@@ -398,7 +543,7 @@ class TaskList:
             rmsd_lower_data = data["rmsd_lower_data"]
             rmsd_lower_shapes = data["rmsd_lower_shapes"]
             proto_align_keys = data["proto_align_keys"]
-            proto_align_rotvec = data["proto_align_rotvec"]
+            proto_align_rotmat = data["proto_align_rotmat"]
             source_rotaconf_counts_data = data["source_rotaconf_counts_data"]
             source_rotaconf_counts_counts = data["source_rotaconf_counts_counts"]
             candidate_data = data["candidate_data"]
@@ -479,19 +624,19 @@ class TaskList:
                     sc_start:sc_end
                 ]
                 task.candidates = candidate_data[cand_start:cand_end]
-                task._processed = True
+                task._has_run = True
 
             tasks.append(task)
 
         self._tasks = tasks
 
         proto_align = {}
-        for key, rotvec in zip(proto_align_keys, proto_align_rotvec):
+        for key, rotmat in zip(proto_align_keys, proto_align_rotmat):
             if len(key) != 2:
                 continue
             proto = int(key[0])
             conf = int(key[1])
-            proto_align[(proto, conf)] = Rotation.from_rotvec(rotvec)
+            proto_align[(proto, conf)] = rotmat
 
         self._proto_align = proto_align
         self._context["proto_align"] = proto_align
@@ -500,6 +645,7 @@ class TaskList:
         self,
         *,
         origin_rotaconformers: Dict[int, Rotation],
+        prototypes: np.ndarray,
         prototype_clusters: Dict[int, Rotation],
         prototypes_scalevec: np.ndarray,
         conf_prototypes: Sequence[int],
@@ -507,11 +653,14 @@ class TaskList:
         motif: str,
         nucpos: int,
         ovRMSD: float,
+        lib,
+        prev_lib,
     ) -> None:
         self._tasks: List[Task] = []
         self._proto_align: Dict[Tuple[int, int], Rotation] = {}
         self._context = {
             "origin_rotaconformers": origin_rotaconformers,
+            "prototypes": prototypes,
             "prototype_clusters": prototype_clusters,
             "prototypes_scalevec": prototypes_scalevec,
             "conf_prototypes": conf_prototypes,
@@ -520,6 +669,8 @@ class TaskList:
             "nucpos": nucpos,
             "ovRMSD": ovRMSD,
             "membership_bins": self.MEMBERSHIP_BINS,
+            "lib": lib,
+            "prev_lib": prev_lib,
         }
 
     def build_tasks(
@@ -528,18 +679,17 @@ class TaskList:
         all_proto: Sequence[int],
         source_confs: Dict[int, Iterable[int]],
         conf_prototypes: Sequence[int],
-        prototypes: np.ndarray,
-        prev_lib,
         origin_rotaconformers: Dict[int, Rotation],
-        lib,
         crmsd_ok: np.ndarray,
-        superimpose,
     ) -> None:
         if self._tasks:
             raise RuntimeError("Tasks already built")
 
         tasks = self._tasks
         proto_align = self._proto_align
+        lib = self._context["lib"]
+        prev_lib = self._context["prev_lib"]
+        prototypes = self._context["prototypes"]
 
         for proto in all_proto:
             conf_pairs = {
@@ -552,12 +702,15 @@ class TaskList:
                 all_oriconfs.update(conf_pairs[tconf])
 
             prototype = prototypes[proto]
-            for oriconf in all_oriconfs:
-                mat = superimpose(prev_lib.coordinates[oriconf], prototype)[0]
-                proto_align[proto, oriconf] = Rotation.from_matrix(mat)
+            all_oriconfs_list = sorted(list(all_oriconfs))
+            curr_proto_align = superimpose_array(
+                prev_lib.coordinates[all_oriconfs_list], prototype
+            )[0]
+            for oriconf, mat in zip(all_oriconfs_list, curr_proto_align):
+                proto_align[proto, oriconf] = mat
 
             def new_task() -> Task:
-                curr_task = Task(nr=len(tasks), prototype=proto)
+                curr_task = Task(nr=len(tasks), prototype=proto, context=self._context)
                 tasks.append(curr_task)
                 return curr_task
 

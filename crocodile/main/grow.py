@@ -125,7 +125,8 @@ def _grow_from_fragment(command, constraints, state):
 
     origin = command["origin"]
     origin_poses = np.load(f"state/{origin}.npy")  ###
-    # origin_poses = origin_poses[:1000]  ###
+    origin_poses = origin_poses[:1000]  ###
+    origin_poses = origin_poses[:100]  ###
     prev_frag = int(open(f"state/{origin}.FRAG").read())  ###
     prev_key = "frag" + str(prev_frag)
 
@@ -172,6 +173,12 @@ def _grow_from_fragment(command, constraints, state):
         nucleotide_mask=prev_nucleotide_mask,
         with_rotaconformers=True,
     )
+    """
+    m1 = origin_poses[0]["rotation"]
+    m2 = prev_lib.get_rotamers(origin_poses[0]["conformer"])[origin_poses[0]["rotamer"]]
+    print(m1)
+    print(Rotation.from_rotvec(m2).as_matrix())
+    """
 
     print("START")
 
@@ -262,11 +269,13 @@ def _grow_from_fragment(command, constraints, state):
         f"Unique target conformers: {len(target_conformer_list)} / {len(lib.coordinates)}"
     )
     origin_rotaconformers = {}
+    origin_rotaconformer_indices = {}
     for conf in origin_conformer_list:
         r = prev_lib.get_rotamers(conf)
         mask = origin_poses["conformer"] == conf
         rota = origin_poses["rotamer"][mask]
         rota_uniq = np.unique(rota)
+        origin_rotaconformer_indices[conf] = rota_uniq
         origin_rotaconformers[conf] = Rotation.from_rotvec(r[rota_uniq])
     print(
         f"Unique origin rotaconformers: {sum([len(r) for r in origin_rotaconformers.values()])}"
@@ -274,8 +283,18 @@ def _grow_from_fragment(command, constraints, state):
 
     # Unload rotaconformers from origin library and load them in target library
     if prev_seq == seq:
-        prev_libf, libf = libf, prev_libf
-        prev_lib, lib = lib, prev_lib
+        assert libf is prev_libf
+        prev_lib = prev_libf.create(
+            pdb_code=pdb_code,
+            nucleotide_mask=prev_nucleotide_mask,
+            with_rotaconformers=False,
+        )
+        lib = libf.create(
+            pdb_code=pdb_code,
+            nucleotide_mask=nucleotide_mask,
+            with_rotaconformers=True,
+        )
+
     else:
         prev_libf.unload_rotaconformers()
         prev_lib = prev_libf.create(
@@ -311,6 +330,7 @@ def _grow_from_fragment(command, constraints, state):
 
     tasks = TaskList(
         origin_rotaconformers=origin_rotaconformers,
+        prototypes=prototypes,
         prototype_clusters=prototype_clusters,
         prototypes_scalevec=prototypes_scalevec,
         conf_prototypes=conf_prototypes,
@@ -318,27 +338,26 @@ def _grow_from_fragment(command, constraints, state):
         motif=motif,
         nucpos=nucpos,
         ovRMSD=ovRMSD,
+        prev_lib=prev_lib,
+        lib=lib,
     )
     npz_filename = "OUTPUT/test.npz"
-    if os.path.exists(npz_filename):
+    if os.path.exists(npz_filename) and 0:
         print("LOAD")
         tasks.load_npz(npz_filename)
         print("/LOAD")
+
     else:
 
         tasks.build_tasks(
             all_proto=all_proto,
             source_confs=source_confs,
             conf_prototypes=conf_prototypes,
-            prototypes=prototypes,
-            prev_lib=prev_lib,
             origin_rotaconformers=origin_rotaconformers,
-            lib=lib,
             crmsd_ok=crmsd_ok,
-            superimpose=superimpose,
         )
 
-        from . import julia_import as _
+        ###from . import julia_import as _
         from threading import Semaphore
         from concurrent.futures import (
             ThreadPoolExecutor,
@@ -351,14 +370,13 @@ def _grow_from_fragment(command, constraints, state):
             10
         )  # pre-load up to 10 tasks. After that, wait until a load has been consumed
 
-        """
         for n in trange(len(tasks)):
             task = tasks[n]
             task.prepare_task(semaphore)
             semaphore.release()
             task.run_task()
-        """
 
+        """
         with ThreadPoolExecutor(
             max_workers=min(len(tasks), 20)
         ) as executor:  # load data for 20
@@ -376,6 +394,7 @@ def _grow_from_fragment(command, constraints, state):
                         semaphore.release()
                         task.run_task()
                         progress.update()
+        """
         print("SAVE")
         tasks.to_npz(npz_filename)
         print("/SAVE")
@@ -386,6 +405,7 @@ def _grow_from_fragment(command, constraints, state):
         candpool.process(
             tasks[n],
             origin_rotaconformers=origin_rotaconformers,
+            origin_rotaconformer_indices=origin_rotaconformer_indices,
             prev_lib_offset=prev_lib_offset,
             lib_offset=lib_offset,
             lib=lib,
@@ -396,6 +416,13 @@ def _grow_from_fragment(command, constraints, state):
     poses6 = np.load("TEST/frag6-rx/poses-filtered.npy")
     poses7 = np.load("TEST/frag7-fwd/poses.npy")
     origins = np.loadtxt("TEST/frag7-fwd/poses-origins.txt", dtype=int) - 1
+
+    ####
+    poses6 = poses6[:1]
+    poses7 = poses7[origins == 0]
+    origins = origins[origins == 0]
+    ####
+
     poses6 = poses6[np.unique(origins)]
     poses6_conf = poses6["conformer"]
     poses6_rota = poses6["rotamer"]
@@ -427,8 +454,10 @@ def _grow_from_fragment(command, constraints, state):
                 print("TARGET CONF MISSING", conf)
         print("SRC RC MISSING", len(rc6.difference(src_rc)), len(rc6))
         print("TARGET RC MISSING", len(rc7.difference(target_rc)), len(rc7))
+        print(poses7_conf[0], poses7_rota[0])
 
     check(cand)
+    """
     print("OK")
     print()
 
@@ -437,6 +466,7 @@ def _grow_from_fragment(command, constraints, state):
     print("cand2", candpool2.total_candidates())
     cand2 = candpool2.concatenate_prototypes()
     check(cand2)
+    """
 
 
 def grow(command, constraints, state):
