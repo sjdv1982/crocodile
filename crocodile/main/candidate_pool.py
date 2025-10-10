@@ -96,17 +96,26 @@ class CandidatePool:
         trans_target = np.einsum("ik,ikl->il", lib_offset[cand_target_conf], target_mat)
         dif_trans = trans_source - trans_target
         disc_dif0 = np.abs(dif_trans % GRIDSPACING)
-        disc_dif1 = np.abs(1 - disc_dif0)
-        disc_dif = np.minimum(disc_dif0, disc_dif1)
-        err_disc_trans = dif_trans - disc_dif
+        disc_dif1 = np.abs(GRIDSPACING - disc_dif0)
+        err_disc_trans = np.minimum(disc_dif0, disc_dif1)
         rmsd_disc_trans = np.sqrt((err_disc_trans**2).sum(axis=1))
 
         cand_conf_rmsd = crmsd[cand_source_conf, cand_target_conf]
-        cand_msd_remain = ovRMSD**2 - cand_conf_rmsd**2 - rmsd_disc_trans
+        cand_msd_remain = ovRMSD**2 - cand_conf_rmsd**2 - rmsd_disc_trans**2
 
+        """
+        K = 23
+        print(
+            cand_conf_rmsd[K],
+            rmsd_disc_trans[K],
+            cand_msd_remain[K],
+            ovRMSD,
+            dif_trans[K],
+            err_disc_trans[K],
+        )
+        """
+        print(np.sqrt(cand_msd_remain).min())
         cand_mask = cand_msd_remain > 0
-
-        print(len(cand_mask), cand_mask.sum())
         self._append(
             task,
             cand_source_conf,

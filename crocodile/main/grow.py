@@ -97,7 +97,7 @@ def _grow_from_anchor(command, constraints, state):
 
 
 def _load_membership(motif, nucpos, conformer, nclust):
-    digits = f"{conformer%100:02d}"
+    digits = f"{(conformer+1)%100:02d}"
     outputdir = f"rotamember/{digits}"
     membership_file = (
         f"{outputdir}/lib-nuc-{motif}-nuc{nucpos}-{conformer+1}-cluster-membership.npy"
@@ -126,7 +126,7 @@ def _grow_from_fragment(command, constraints, state):
     origin = command["origin"]
     origin_poses = np.load(f"state/{origin}.npy")  ###
     origin_poses = origin_poses[:1000]  ###
-    origin_poses = origin_poses[:100]  ###
+    origin_poses = origin_poses[:1]  ###
     prev_frag = int(open(f"state/{origin}.FRAG").read())  ###
     prev_key = "frag" + str(prev_frag)
 
@@ -134,10 +134,12 @@ def _grow_from_fragment(command, constraints, state):
         nucleotide_mask = [True, False]
         prev_nucleotide_mask = [False, True]
         frag0, frag1 = prev_key, key
+        nucpos = 1
     elif prev_frag == fragment + 1:
         nucleotide_mask = [False, True]
         prev_nucleotide_mask = [True, False]
         frag0, frag1 = key, prev_key
+        nucpos = 2
     else:
         raise AssertionError((fragment, prev_frag))
 
@@ -153,7 +155,6 @@ def _grow_from_fragment(command, constraints, state):
     refe = state["reference"]
     seq = refe.get_sequence(fragment, fraglen=2)
     motif = seq.replace("U", "C").replace("G", "A")
-    nucpos = np.where(prev_nucleotide_mask)[0][0] + 1
 
     conf_prototypes = np.load(
         f"rotaclustering/dinuc-{motif}-nuc{nucpos}-assign-prototypes.npy"
@@ -187,10 +188,7 @@ def _grow_from_fragment(command, constraints, state):
     prototype_clusters = {}
     for prototype_index in range(nprototypes):
         prototype_cluster_file = f"rotaclustering/lib-nuc-{motif}-nuc{nucpos}-prototype-{prototype_index+1}-clusters.npy"
-        curr_prototype_cluster_indices = np.load(prototype_cluster_file)
-        curr_prototype_clusters = Rotation.from_rotvec(
-            libf.rotaconformers[curr_prototype_cluster_indices]
-        )
+        curr_prototype_clusters = Rotation.from_matrix(np.load(prototype_cluster_file))
         prototype_clusters[prototype_index] = curr_prototype_clusters
 
     lib = libf.create(
@@ -231,6 +229,7 @@ def _grow_from_fragment(command, constraints, state):
     else:
         crmsd = np.load(crmsd_file)
     crmsd_ok = crmsd <= cRMSD
+
     lib_crmsd_ok = crmsd_ok[origin_conformer_list]
     ori_cconf, target_cconf = np.where(lib_crmsd_ok)
     target_confs = []
@@ -342,7 +341,7 @@ def _grow_from_fragment(command, constraints, state):
         lib=lib,
     )
     npz_filename = "OUTPUT/test.npz"
-    if os.path.exists(npz_filename) and 0:
+    if os.path.exists(npz_filename):
         print("LOAD")
         tasks.load_npz(npz_filename)
         print("/LOAD")
@@ -418,9 +417,10 @@ def _grow_from_fragment(command, constraints, state):
     origins = np.loadtxt("TEST/frag7-fwd/poses-origins.txt", dtype=int) - 1
 
     ####
-    poses6 = poses6[:1]
-    poses7 = poses7[origins == 0]
-    origins = origins[origins == 0]
+    poses6 = poses6[: len(origin_poses)]
+    poses7 = poses7[origins < len(origin_poses)]
+    origins = origins[origins < len(origin_poses)]
+    print(set(zip(poses7["conformer"].tolist(), poses7["rotamer"].tolist())))
     ####
 
     poses6 = poses6[np.unique(origins)]
@@ -452,12 +452,11 @@ def _grow_from_fragment(command, constraints, state):
         for conf in np.unique(poses7_conf):
             if not conf in target_confs:
                 print("TARGET CONF MISSING", conf)
-        print("SRC RC MISSING", len(rc6.difference(src_rc)), len(rc6))
-        print("TARGET RC MISSING", len(rc7.difference(target_rc)), len(rc7))
+        print("SRC RC MISSING", len(rc6.difference(src_rc)), "/", len(rc6))
+        print("TARGET RC MISSING", len(rc7.difference(target_rc)), "/", len(rc7))
         print(poses7_conf[0], poses7_rota[0])
 
     check(cand)
-    """
     print("OK")
     print()
 
@@ -466,7 +465,6 @@ def _grow_from_fragment(command, constraints, state):
     print("cand2", candpool2.total_candidates())
     cand2 = candpool2.concatenate_prototypes()
     check(cand2)
-    """
 
 
 def grow(command, constraints, state):
