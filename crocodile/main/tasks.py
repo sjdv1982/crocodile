@@ -47,6 +47,8 @@ class Task:
         self._has_run = False
         self._finalized = False
 
+        self._context = context
+
     def add_target_conformer(self, conformer: int, rc_count: int) -> None:
         if self._finalized:
             self._raise_finalized()
@@ -77,9 +79,6 @@ class Task:
         self.target_conformers = np.array(self._target_conformers, dtype=int)
         self.source_conformers = np.array(source_list, dtype=int)
         self._finalized = True
-
-    def set_context(self, context: Dict[str, object]) -> None:
-        self._context = context
 
     def _raise_finalized(self) -> None:
         raise RuntimeError("Cannot modify task after finalization")
@@ -115,10 +114,11 @@ class Task:
             conf: origin_rotaconformers[conf].as_matrix()
             for conf in origin_rotaconformers
         }
+
         csource_rotaconformers_align = np.concatenate(
             [
                 proto_align[proto, conf]
-                .dot(origin_rotaconformers2[conf])
+                .T.dot(origin_rotaconformers2[conf])
                 .swapaxes(0, 1)
                 for conf in csource_conformers
             ]
@@ -129,6 +129,42 @@ class Task:
         )
 
         rmsd = np.empty((len(clusters), len(csource_rotaconformers)))
+
+        """
+        CLUST = 57
+        if ctarget_conformers[0] != 35:
+            return  ###
+        assert len(csource_conformers) == 1 and len(ctarget_conformers) == 1
+        prototype = self._context["prototypes"][self.prototype]
+        print("PROTO", self.prototype, nucpos)
+
+        scoor00 = self._context["prev_lib"].coordinates[csource_conformers[0]].copy()
+        scoor00 -= scoor00.mean(axis=0)
+        source_proto_align, srmsd = superimpose(scoor00, prototype)
+        ###scoor0 = scoor00.dot(proto_align[proto, csource_conformers[0]])
+        scoor0 = scoor00.dot(source_proto_align)
+        assert len(self._context["origin_rotaconformers"][csource_conformers[0]]) == 1
+
+        tcoor00 = self._context["lib"].coordinates[ctarget_conformers[0]].copy()
+        tcoor00 -= tcoor00.mean(axis=0)
+        target_proto_align, trmsd = superimpose(tcoor00, prototype)
+        tcoor0 = tcoor00.dot(target_proto_align)
+
+        coor0 = tcoor0
+        # coor0 = scoor0
+
+        coor1 = scoor00.dot(
+            self._context["origin_rotaconformers"][csource_conformers[0]][0].as_matrix()
+        )
+
+        coor2 = coor0.dot(clusters[CLUST].as_matrix())
+        coor2a = prototype.dot(clusters[CLUST].as_matrix())
+
+        print(((coor1 - coor2) ** 2).sum(axis=1).mean() ** 0.5)
+        print(((coor1 - coor2a) ** 2).sum(axis=1).mean() ** 0.5)
+        print(((scoor0 - tcoor0) ** 2).sum(axis=1).mean() ** 0.5)
+        ###
+        """
 
         for n, cluster in enumerate(clusters):
             rr = csource_rotaconformers_align.dot(cluster.inv().as_matrix())
@@ -144,6 +180,10 @@ class Task:
 
         rmsd_upper = np.digitize(rmsd + ovRMSD, membership_bins).astype(np.uint8)
         rmsd_lower = np.digitize(rmsd - ovRMSD, membership_bins).astype(np.uint8)
+        ###print(rmsd[CLUST, 0])
+        ###print(rmsd_upper[CLUST, 0])
+        ###print(rmsd_lower[CLUST, 0])
+        ###exit(0)
 
         membership: List[np.ndarray] = []
         for conformer in ctarget_conformers:
@@ -179,11 +219,28 @@ class Task:
         assert self.rmsd_upper is not None
         assert self.rmsd_lower is not None
 
+        """
+        assert len(self.rmsd_upper.T) == 1, self.rmsd_upper.shape
+        ROTA = 6584
+        mem = self.membership[:, ROTA]
+        up = self.rmsd_upper[:, 0]
+        down = self.rmsd_lower[:, 0]
+        import sys
+
+        main = sys.modules["__main__"]
+        setattr(main, "up", up)
+        setattr(main, "down", down)
+        setattr(main, "mem", mem)
+        setattr(main, "self", self)
+        sys.exit(0)
+        """
+
         source_rotaconf_counts, candidates = Main.CrocoCandidates.compute_candidates(
             self.membership,
             self.rmsd_upper,
             self.rmsd_lower,
         )
+        print("RUN", len(candidates), self.membership.shape[1])
         self.membership = None
         self.rmsd_upper = None
         self.rmsd_lower = None
@@ -319,7 +376,7 @@ class Task:
         self._has_run = True
 
 
-Task.run_task = Task._run_task_tensor
+###Task.run_task = Task._run_task_tensor
 
 
 class TaskList:
@@ -494,7 +551,6 @@ class TaskList:
         )
 
         saver = np.savez_compressed if compressed else np.savez
-        print("DO SAVE")
         saver(
             filepath,
             prototype=prototypes,
@@ -579,9 +635,9 @@ class TaskList:
                 source_conformers=source_conformers[s_start:s_end],
                 rc_source=int(rc_source[idx]),
                 rc_target=int(rc_target[idx]),
+                context=self._context,
             )
             task.finalize()
-            task.set_context(self._context)
 
             if prepared[idx]:
                 m_start, m_end = membership_offsets[idx : idx + 2]
@@ -773,4 +829,3 @@ class TaskList:
 
         for task in tasks:
             task.finalize()
-            task.set_context(self._context)
