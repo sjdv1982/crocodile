@@ -125,8 +125,8 @@ def _grow_from_fragment(command, constraints, state):
 
     origin = command["origin"]
     origin_poses = np.load(f"state/{origin}.npy")  ###
-    origin_poses = origin_poses[:1000]  ###
-    origin_poses = origin_poses[:1]  ###
+    # origin_poses = origin_poses[:1000]  ###
+    # origin_poses = origin_poses[:1]  ###
     prev_frag = int(open(f"state/{origin}.FRAG").read())  ###
     prev_key = "frag" + str(prev_frag)
 
@@ -420,7 +420,7 @@ def _grow_from_fragment(command, constraints, state):
     poses6 = poses6[: len(origin_poses)]
     poses7 = poses7[origins < len(origin_poses)]
     origins = origins[origins < len(origin_poses)]
-    print(set(zip(poses7["conformer"].tolist(), poses7["rotamer"].tolist())))
+    ###print(set(zip(poses7["conformer"].tolist(), poses7["rotamer"].tolist())))
     ####
 
     poses6 = poses6[np.unique(origins)]
@@ -453,7 +453,13 @@ def _grow_from_fragment(command, constraints, state):
             if not conf in target_confs:
                 print("TARGET CONF MISSING", conf)
         print("SRC RC MISSING", len(rc6.difference(src_rc)), "/", len(rc6))
-        print("TARGET RC MISSING", len(rc7.difference(target_rc)), "/", len(rc7))
+        print(
+            "TARGET RC MISSING",
+            len(rc7.difference(target_rc)),
+            "/",
+            len(rc7),
+            len(target_rc),
+        )
         print(poses7_conf[0], poses7_rota[0])
 
     check(cand)
@@ -465,6 +471,22 @@ def _grow_from_fragment(command, constraints, state):
     print("cand2", candpool2.total_candidates())
     cand2 = candpool2.concatenate_prototypes()
     check(cand2)
+
+    for proto in candpool2.prototypes:
+        print("CANDPOOL RUN", proto)
+        candpool2.run(
+            proto,
+            lib=lib,
+            prev_lib=prev_lib,
+            prototypes=prototypes,
+            prototypes_scalevec=prototypes_scalevec,
+            ovRMSD=ovRMSD,
+        )
+
+    print()
+    print("cand3", candpool2.total_candidates())
+    cand3 = candpool2.concatenate_prototypes()
+    check(cand3)
 
 
 def grow(command, constraints, state):
