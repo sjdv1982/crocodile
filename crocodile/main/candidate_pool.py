@@ -1,5 +1,7 @@
 import numpy as np
 from scipy.spatial.transform import Rotation
+
+from crocodile.main.superimpose import superimpose_array
 from . import GRIDSPACING
 
 
@@ -97,7 +99,7 @@ class CandidatePool:
         dif_trans = trans_source - trans_target
         disc_dif0 = np.abs(dif_trans % GRIDSPACING)
         disc_dif1 = np.abs(GRIDSPACING - disc_dif0)
-        err_disc_trans = np.minimum(disc_dif0, disc_dif1)
+        err_disc_trans = np.maximum(np.minimum(disc_dif0, disc_dif1), 0)
         rmsd_disc_trans = np.sqrt((err_disc_trans**2).sum(axis=1))
 
         cand_conf_rmsd = crmsd[cand_source_conf, cand_target_conf]
@@ -114,7 +116,6 @@ class CandidatePool:
             err_disc_trans[K],
         )
         """
-        print(np.sqrt(cand_msd_remain).min())
         cand_mask = cand_msd_remain > 0
         self._append(
             task,
@@ -150,6 +151,79 @@ class CandidatePool:
         pool["remain_msd"].append(cand_msd_remain)
         pool["candidate_mask"].append(cand_mask)
 
+    def run(self, proto, *, lib, prev_lib, prototypes, prototypes_scalevec, ovRMSD):
+        assert self._finalized
+
+        pool = self._data[proto]
+        prototype = prototypes[proto]
+        scalevec = prototypes_scalevec[proto]
+
+        source_conformers, source_conf_ind = np.unique(
+            pool["source_conformer"], return_inverse=True
+        )
+        source_proto_align = superimpose_array(
+            prev_lib.coordinates[source_conformers], prototype
+        )[0]
+
+        target_conformers, target_conf_ind = np.unique(
+            pool["target_conformer"], return_inverse=True
+        )
+
+        target_proto_align = superimpose_array(
+            lib.coordinates[target_conformers], prototype
+        )[0]
+
+        # TODO: chunking
+
+        source_rotaconformers = pool["source_mat"]
+        """
+        source_rotaconformers_align = (
+            source_proto_align[source_conf_ind]
+            .swapaxes(1, 2)
+            .dot(source_rotaconformers)
+            .swapaxes(0, 1)
+        )
+        """
+        EINSUM = "ijk,ijl->ilk"
+        source_rotaconformers_align = np.einsum(
+            EINSUM, source_proto_align[source_conf_ind], source_rotaconformers
+        )
+
+        target_rotaconformers = pool["target_mat"]
+        target_rotaconformers_align = np.einsum(
+            EINSUM, target_proto_align[target_conf_ind], target_rotaconformers
+        )
+
+        rr = np.einsum(
+            "ijk,ilk->ijl", target_rotaconformers_align, source_rotaconformers_align
+        )
+        # rr = target_rotaconformers_align.dot(source_rotaconformers_align.T)
+        ax = Rotation.from_matrix(rr).as_rotvec()
+
+        ang = np.linalg.norm(ax, axis=1)
+        ang = np.maximum(ang, 0.0001)
+        ax /= ang[:, None]
+        fac = (np.cos(ang) - 1) ** 2 + np.sin(ang) ** 2
+        cross = (scalevec * scalevec) * (1 - ax * ax)
+        ###curr_rmsd = np.sqrt(fac * cross.sum(axis=-1))
+        ###candidate_mask = curr_rmsd < ovRMSD
+        curr_msd = fac * cross.sum(axis=-1)
+        candidate_mask = (curr_msd < ovRMSD**2) & (
+            curr_msd < pool["remain_msd"] + ((ovRMSD + 0.2) ** 2 - ovRMSD**2)
+        )
+        print(candidate_mask.sum(), len(curr_msd))
+
+        for key in (
+            "source_conformer",
+            "source_rotamer",
+            "target_conformer",
+            "target_rotamer",
+            "remain_msd",
+        ):
+            pool[key] = pool[key][candidate_mask]
+        pool["source_mat"] = pool["source_mat"][candidate_mask]
+        pool["target_mat"] = pool["target_mat"][candidate_mask]
+
     def finalize(self):
         if self._finalized:
             return
@@ -171,6 +245,10 @@ class CandidatePool:
                 )
             pool["candidate_mask"] = []
         self._finalized = True
+
+    @property
+    def prototypes(self):
+        return self._data.keys()
 
     def values(self):
         return self._data.values()
