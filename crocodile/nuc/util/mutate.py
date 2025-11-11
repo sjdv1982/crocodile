@@ -49,7 +49,13 @@ def mutate_AtoG_array(input, output):
 rna_sizes = {"A": 22, "C": 20, "G": 23, "U": 20}
 
 
-def mutate(arr: np.ndarray, input_sequence: str, output_sequence: str) -> np.ndarray:
+def mutate(
+    arr: np.ndarray,
+    input_sequence: str,
+    output_sequence: str,
+    *,
+    center_coordinates=True,
+) -> np.ndarray:
     """Mutate heavy-atom fragment or fragment library, from A/C to A/C/G/U.
 
     arr: Input fragment coordinates in .npy format.
@@ -61,6 +67,8 @@ def mutate(arr: np.ndarray, input_sequence: str, output_sequence: str) -> np.nda
 
     input_sequence: Sequence of the input fragment(s). Must consist of A and/or C",
     output_sequence: Sequence of the output fragment(s). Must consist of A, C, G and/or U".
+
+    center_coordinates: If True, (re-)center the coordinates after mutation
 
     Returns: Output fragment coordinates in .npy format.
     The shape will be the same as the input data, but with one extra atom for each G."""
@@ -113,6 +121,9 @@ def mutate(arr: np.ndarray, input_sequence: str, output_sequence: str) -> np.nda
             curr_outp[:] = curr_inp  # no change
         offset += size
         output_offset += output_size
+
+    if center_coordinates:
+        outp = outp - outp.mean(axis=1)[:, None, :]
 
     if arr.ndim == 2:
         outp = outp[0]
