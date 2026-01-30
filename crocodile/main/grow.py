@@ -472,7 +472,7 @@ def _grow_from_fragment(command, constraints, state):
     cand2 = candpool2.concatenate_prototypes()
     check(cand2)
 
-    for proto in candpool2.prototypes:
+    for proto in tqdm(candpool2.prototypes):
         print("CANDPOOL RUN", proto)
         candpool2.run(
             proto,

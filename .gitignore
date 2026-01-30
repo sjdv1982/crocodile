@@ -1,4 +1,5 @@
 *.pyc
+.vscode/
 
 # Seamless vault files and backups
 

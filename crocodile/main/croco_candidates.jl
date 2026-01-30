@@ -206,3 +206,82 @@ end
 export compute_candidates, compute_candidates_DEFAULT
 
 end
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    using NPZ
+    using .CrocoCandidates
+
+    const USAGE = """
+    Usage:
+      julia croco_candidates.jl [--algorithm fast|default] membership.npy rmsd_upper.npy rmsd_lower.npy counts_output.npy candidates_output.npy
+    """
+
+    function print_usage(io::IO=stdout)
+        println(io, USAGE)
+        println(io, "Reads UInt8 matrices from the input .npy files and writes Int vectors with candidate counts and indices.")
+    end
+
+    function parse_cli_args(args::Vector{String})
+        if any(arg -> arg in ("-h", "--help"), args)
+            print_usage()
+            exit(0)
+        end
+
+        algorithm = :fast
+        positional = String[]
+        idx = 1
+        while idx <= length(args)
+            arg = args[idx]
+            if arg == "--algorithm"
+                idx += 1
+                idx <= length(args) || error("`--algorithm` expects a value (`fast` or `default`)")
+                alg_value = lowercase(args[idx])
+                if alg_value == "fast"
+                    algorithm = :fast
+                elseif alg_value == "default"
+                    algorithm = :default
+                else
+                    error("Unknown algorithm `$(args[idx])`; expected `fast` or `default`")
+                end
+            else
+                push!(positional, arg)
+            end
+            idx += 1
+        end
+
+        length(positional) == 5 || error("Expected 5 positional arguments.\n" * USAGE)
+
+        return (
+            membership = positional[1],
+            upper = positional[2],
+            lower = positional[3],
+            counts_out = positional[4],
+            candidates_out = positional[5],
+            algorithm = algorithm,
+        )
+    end
+
+    function load_uint8_matrix(path::AbstractString)
+        data = NPZ.npzread(path)
+        ndims(data) == 2 || error("`$path` does not contain a 2D array")
+        data isa Array{UInt8,2} && return data
+        converted = eltype(data) === UInt8 ? Array{UInt8,2}(data) : Array{UInt8,2}(UInt8.(data))
+        return converted
+    end
+
+    function main(args::Vector{String})
+        opts = parse_cli_args(args)
+        membership = load_uint8_matrix(opts.membership)
+        rmsd_upper = load_uint8_matrix(opts.upper)
+        rmsd_lower = load_uint8_matrix(opts.lower)
+
+        counts, candidates = opts.algorithm === :default ?
+            CrocoCandidates.compute_candidates_DEFAULT(membership, rmsd_upper, rmsd_lower) :
+            CrocoCandidates.compute_candidates(membership, rmsd_upper, rmsd_lower)
+
+        NPZ.npzwrite(opts.counts_out, counts)
+        NPZ.npzwrite(opts.candidates_out, candidates)
+    end
+
+    main(copy(ARGS))
+end
