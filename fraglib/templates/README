@@ -1,0 +1,30 @@
+Nucleotide fragment templates:
+
+1. In PDB format
+
+2. In "parsed PDB" numpy format, with the following dtype:
+
+[
+    ("model", 'uint16'),
+    ("hetero", "S1"),
+    ("name", "S4"),
+    ("altloc","S1"),
+    ("resname", "S3"),
+    ("chain","S4"),
+    ("index", 'uint32'),
+    ("icode", "S1"),
+    ("resid", 'uint16'),
+    ("x", 'float32'),
+    ("y", 'float32'),
+    ("z", 'float32'),
+    ("occupancy", 'float32'),
+    ("bfactor", 'float32'),
+    ("segid", "S4"),
+    ("element", "S2")
+]
+
+3. ATTRACT/ : in ATTRACT reduced format 
+    (RNA reduced force field atom types from Setny et al.)
+
+Author: Sjoerd de Vries, CNRS.
+License: public domain
