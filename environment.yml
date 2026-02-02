@@ -1,0 +1,10 @@
+name: crocodile
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.10
+  - numpy
+  - scipy
+  - ruamel.yaml
+  - tqdm
+  - biopython
