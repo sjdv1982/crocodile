@@ -1,6 +1,6 @@
 - mutate.py
 - parse_pdb.py
-- ppdb.py
+- rna_pdb.py
 - templates/AA-ppdb.npy
 - templates/AC-ppdb.npy
 - templates/CA-ppdb.npy
