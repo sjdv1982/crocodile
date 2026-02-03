@@ -160,3 +160,14 @@ def expand_discrete_offsets(disp_indices, p_indices, rounded, reverse_map=None):
         coords = np.stack([reverse_map[int(p)] for p in p_seg], axis=0).astype(np.int16)
         results[idx] = coords + rounded[idx].astype(np.int16)
     return results
+
+
+def gather_discrete_offsets(list_of_lists: list[list[np.ndarray | None]]) -> np.ndarray:
+
+    data = np.concatenate([l for l in list_of_lists if l is not None])
+    assert data.max() < 2**15 and data.min() > -(2**15)
+    data = data.astype(np.int16)
+    repeats = [len(l) if l is not None else 0 for l in list_of_lists]
+    indices = np.repeat(np.arange(len(list_of_lists), dtype=np.uint32), repeats=repeats)
+    assert len(data) == len(indices)
+    return indices, data

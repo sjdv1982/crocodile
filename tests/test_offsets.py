@@ -3,7 +3,11 @@ import sys, os
 import numpy as np
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "code"))
-from offsets import get_discrete_offsets, expand_discrete_offsets
+from offsets import (
+    get_discrete_offsets,
+    expand_discrete_offsets,
+    gather_discrete_offsets,
+)
 
 
 def test_offsets():
@@ -19,9 +23,7 @@ def test_offsets():
     gx, gy, gz = np.meshgrid(grid_ax, grid_ax, grid_ax, indexing="ij")
     grid_positions = np.column_stack([gx.ravel(), gy.ravel(), gz.ravel()])
 
-    disp_idx, p_idx, rounded, reverse_map = get_discrete_offsets(
-        offsets_all, radii_all
-    )
+    disp_idx, p_idx, rounded, reverse_map = get_discrete_offsets(offsets_all, radii_all)
     expanded = expand_discrete_offsets(disp_idx, p_idx, rounded, reverse_map)
 
     assert disp_idx.size > 0
@@ -47,3 +49,5 @@ def test_offsets():
             print("got:", sorted(got_set))
 
         assert brute == got_set
+
+    _ = gather_discrete_offsets(expanded)
