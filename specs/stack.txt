@@ -1,0 +1,29 @@
+(NOTE: a shim with all command-line options was generated before this prompt was launched)
+
+Here is a challenge: please implement stack.py. You can re-use existing code from the tools called by the all-stack-OLD.sh prototype:
+
+- /home/sjoerd/data/work/crocodile/crocodile-OLD/util/calc-all-rotamers-stacking-angle.py calculates (and filters by) stacking angles and dihedral angles; 
+
+- /home/sjoerd/data/work/crocodile/crocodile-OLD/util/pseudo-crocodile-2stack.py calculates (and filters by) distance vectors.
+After applying the filters, stack.py needs to combine them to form poses.
+
+Note that the all-stack-OLD.sh prototype differs in two important aspects:
+
+- In all-stack-OLD,  filtering is done using two stackings, whereas stack.py considers only one stacking.
+
+- In all-stack-OLD, the filtered fragments are trinucleotides, whereas stack.py deals with dinucleotides.
+
+In detail, stack.py does the following:
+
+- It parses the protein PDB using parse_pdb.py. If there are multiple models, the first is selected.
+- It selects the aromatic ring (or double-ring in case of TRP) of the protein residue that has the provided residue ID.
+- It loads the dinucleotide library of the specified sequence, excluding any PDB codes that were provided for exclusion. The first or second nucleotide is selected, and only the base atoms (which also form an aromatic ring or double-ring)
+- It iterates over all conformers (or over a selection if test-conformers has been set).
+  For each conformer, it selects all rotamers (or a selection if test-rotamers has been set). Then it evaluates the stacking of the rotaconformers in terms of: 1. the angle between the ring planes; 2. the dihedral angle between the two vectors of each ring (or double-ring) center to each first atom; and 3. the distance vector between the protein and nucleobase ring centers, adding a fixed correction factor for the lateral component. Note that 1. and 2. (see calc-all-rotamers-stacking-angle.py) only depend on the rotamer+conformer, whereas 3. also depends on the offset, which is evaluated over a grid (see pseudo-crocodile-2stack.py).
+- The conformer+rotamer+offset combinations that pass the filter are written into the two pose output files, using routines from poses.py
+
+The test command is in tests/1b7f/stack.sh . Please run the test command from within tests/1b7f/ inside the crocodile conda env.  
+
+***
+
+One point. Note that the rotamers (rotaconformers) are stored as rotvec. They might need to be converted to a different form (e.g.  matrices) in order to evaluate the filters. This can be done using scipy's Rotation class. Please proceed.

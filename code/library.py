@@ -251,7 +251,7 @@ class LibraryFactory:
 
     def create(
         self,
-        pdb_code: Optional[str],
+        pdb_code: Optional[str | list[str] | tuple[str, ...] | set[str]],
         *,
         prune_conformers: bool = False,
         nucleotide_mask: Optional[np.ndarray] = None,
@@ -260,9 +260,9 @@ class LibraryFactory:
     ) -> Library:
         """Creates a Library, filtered by origin and/or nucleotide selection.
 
-        - Filtering by origin. Provide a pdb_code.
-            All conformers in the primary list with that PDB code as origin will be replaced.
-            All conformers in the extension list with that PDB code will be invalidated.
+        - Filtering by origin. Provide a pdb_code (string) or a list/tuple/set of pdb_code strings.
+            All conformers in the primary list with one of those PDB codes as origin will be replaced.
+            All conformers in the extension list with one of those PDB codes will be invalidated.
                 If prune_conformers, the conformers will be physically removed from the array,
                  and a mapping from the old array to the new array is added to the returned library
                 This is incompatible with with_rotaconformers.
@@ -293,11 +293,22 @@ class LibraryFactory:
         ):
             raise RuntimeError("Rotaconformers must be loaded first")
 
+        pdb_codes: Optional[set[str]] = None
+        if pdb_code is not None:
+            if isinstance(pdb_code, str):
+                pdb_codes = {pdb_code.lower()}
+            elif isinstance(pdb_code, (list, tuple, set)):
+                pdb_codes = {str(code).lower() for code in pdb_code}
+            else:
+                raise TypeError("pdb_code must be a string or a list/tuple/set of strings")
+            if not pdb_codes:
+                pdb_codes = None
+
         primary_coordinates = self.primary_coordinates
-        if pdb_code is not None and self.replacement_origins is not None:
+        if pdb_codes is not None and self.replacement_origins is not None:
             to_replace = []
             for confnr, ori in enumerate(self.replacement_origins):
-                if ori == pdb_code.lower():
+                if ori in pdb_codes:
                     to_replace.append(confnr)
             if to_replace:
                 assert self.replacement_coordinates is not None
@@ -309,10 +320,10 @@ class LibraryFactory:
         conformer_mapping = None
         if self.extension_coordinates is not None:
             extension_coordinates = self.extension_coordinates
-            if pdb_code is not None and self.extension_origins is not None:
+            if pdb_codes is not None and self.extension_origins is not None:
                 to_replace = []
                 for confnr, ori in enumerate(self.extension_origins):
-                    if ori == pdb_code.lower():
+                    if ori in pdb_codes:
                         to_replace.append(confnr)
                 if to_replace:
                     offset = len(primary_coordinates)
