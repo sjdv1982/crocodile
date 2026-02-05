@@ -11,13 +11,9 @@ from scipy.spatial.transform import Rotation
 from tqdm import tqdm
 
 from library import config
-from offsets import (
-    expand_discrete_offsets,
-    gather_discrete_offsets,
-    get_discrete_offsets,
-)
+from offsets import get_discrete_offsets
 from parse_pdb import parse_pdb
-from poses import pack_all_poses
+from poses import PoseStreamAccumulator
 from rna_pdb import ppdb2nucseq
 
 
@@ -183,7 +179,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--pdb-exclude",
-        "--pdb-exlude",
         nargs="+",
         default=[],
         type=_pdb_code,
@@ -448,200 +443,207 @@ def _run(args: argparse.Namespace) -> int:
             replace=False,
         )
 
-    roco_conformer_indices: list[np.ndarray] = []
-    roco_rotamer_indices: list[np.ndarray] = []
-    roco_centers: list[np.ndarray] = []
-
-    for conformer_index in tqdm(
-        selected_conformers,
-        desc="Conformer-angle filter",
-        unit="conf",
-        mininterval=2.0,
-    ):
-        ring_coordinates = coordinates[conformer_index, ring_mask]
-        if len(ring_coordinates) < 3:
-            continue
-
-        rotamer_end = int(rotaconformers_index[conformer_index])
-        rotamer_start = (
-            0
-            if conformer_index == 0
-            else int(rotaconformers_index[conformer_index - 1])
-        )
-        rotamer_count = rotamer_end - rotamer_start
-        if rotamer_count <= 0:
-            continue
-
-        if selected_rotamer_positions is None:
-            local_rotamer_indices = np.arange(rotamer_count, dtype=np.int64)
-        else:
-            local_rotamer_indices = selected_rotamer_positions.astype(
-                np.int64, copy=False
-            )
-        global_rotamer_indices = rotamer_start + local_rotamer_indices
-
-        rotamer_matrices = _rotamers_to_matrices(rotaconformers[global_rotamer_indices])
-        ring_rotated = np.einsum("ij,kjl->kil", ring_coordinates, rotamer_matrices)
-        ring_planes = _calc_planes(ring_rotated)
-
-        cross_norm = np.linalg.norm(
-            np.cross(protein_plane[None, :], ring_planes), axis=1
-        )
-        cross_norm = np.minimum(cross_norm, 1.0)
-        angles = np.arcsin(cross_norm)
-
-        ring_centers = ring_rotated.mean(axis=1)
-        ring_x = ring_rotated[:, 0, :] - ring_centers
-        ring_x -= (
-            np.einsum("ij,j->i", ring_x, protein_plane)[:, None]
-            * protein_plane[None, :]
-        )
-        ring_x_norm = np.linalg.norm(ring_x, axis=1)
-        degenerate = ring_x_norm < 0.0001
-        safe_norm = np.where(degenerate, 1.0, ring_x_norm)
-        normalized_ring_x = ring_x / safe_norm[:, None]
-        dihedral_x = np.einsum("ij,j->i", normalized_ring_x, protein_x)
-        dihedral_y = np.einsum("ij,j->i", normalized_ring_x, protein_y)
-        dihedral = np.angle(dihedral_x + 1.0j * dihedral_y)
-        dihedral[degenerate] = np.pi / 2
-
-        mask = _dihedral_filter(
-            angles,
-            dihedral,
-            max_angle_deg=args.angle,
-            dihedral_min_deg=dihedral_min_deg,
-            dihedral_max_deg=dihedral_max_deg,
-        )
-        if not np.any(mask):
-            continue
-
-        passing_rotamers_raw = local_rotamer_indices[mask]
-        if (
-            len(passing_rotamers_raw)
-            and passing_rotamers_raw.max() > np.iinfo(np.uint16).max
-        ):
-            raise ValueError(
-                "Rotamer index exceeds uint16 range; use --test-rotamers to constrain per-conformer rotamers"
-            )
-        passing_rotamers = passing_rotamers_raw.astype(np.uint16, copy=False)
-        passing_centers = ring_centers[mask]
-        if conformer_index > np.iinfo(np.uint16).max:
-            raise ValueError("Conformer index exceeds uint16 range")
-        passing_conformers = np.full(
-            len(passing_rotamers), conformer_index, dtype=np.uint16
-        )
-
-        roco_conformer_indices.append(passing_conformers)
-        roco_rotamer_indices.append(passing_rotamers)
-        roco_centers.append(passing_centers)
-
-    del rotaconformers, rotaconformers_index
-    if not roco_centers:
-        _write_output_files([], Path(args.output[0]), Path(args.output[1]))
-        print("0 total solutions", file=sys.stderr)
-        return 0
-
-    conformer_indices = np.concatenate(roco_conformer_indices, axis=0)
-    rotamer_indices = np.concatenate(roco_rotamer_indices, axis=0)
-    nucleobase_centers = np.concatenate(roco_centers, axis=0).astype(
-        np.float32, copy=False
-    )
-
-    displacement_world = protein_center[None, :] - nucleobase_centers
-    displacement_grid = displacement_world / GRID_SPACING
-    radius_grid = np.full(
-        (len(displacement_grid),),
-        (5.0 + args.margin) / GRID_SPACING,
-        dtype=np.float32,
-    )
-
-    disp_indices, p_indices, rounded, reverse_map = get_discrete_offsets(
-        displacement_grid, radius_grid
-    )
-    print(
-        f"[4/7] Built offset candidates: {len(disp_indices)} entries",
-        file=sys.stderr,
-    )
-    if len(disp_indices) == 0:
-        _write_output_files([], Path(args.output[0]), Path(args.output[1]))
-        print("0 total solutions", file=sys.stderr)
-        return 0
-
-    reverse_table = np.empty((max(reverse_map.keys()) + 1, 3), dtype=np.int16)
-    for p_index, xyz in reverse_map.items():
-        reverse_table[p_index] = xyz
-
-    kept_disp: list[np.ndarray] = []
-    kept_p: list[np.ndarray] = []
-    chunk_size = 2_000_000
+    print("[4/7] Generating offset candidates...", file=sys.stderr)
     print("[5/7] Applying distance-vector filter...", file=sys.stderr)
-    n_chunks = (len(disp_indices) + chunk_size - 1) // chunk_size
-    for start in tqdm(
-        range(0, len(disp_indices), chunk_size),
-        total=n_chunks,
+    center_batch_size = 512 if args.test_rotamers is not None else 256
+    offset_chunk_size = 2_000_000
+    total_candidates = 0
+    total_surviving = 0
+    reverse_table: np.ndarray | None = None
+
+    stream_acc = PoseStreamAccumulator(Path(args.output[0]), Path(args.output[1]))
+    distance_pbar = tqdm(
         desc="Offset-distance filter",
-        unit="chunk",
+        unit="cand",
         mininterval=2.0,
-    ):
-        end = min(start + chunk_size, len(disp_indices))
-        disp_chunk = disp_indices[start:end]
-        p_chunk = p_indices[start:end]
-
-        offset_grid = rounded[disp_chunk].astype(np.int16) + reverse_table[p_chunk]
-        center_vec = (
-            offset_grid.astype(np.float32) * GRID_SPACING
-            - displacement_world[disp_chunk]
-        )
-
-        center_z = np.abs(center_vec[:, 2])
-        center_dis = np.linalg.norm(center_vec, axis=1)
-        axial = np.abs(center_vec.dot(protein_plane))
-        axial = np.maximum(0.0, np.minimum(center_dis - 0.001, axial))
-        lateral = np.sqrt(np.maximum(0.0, center_dis * center_dis - axial * axial))
-        center_dis_corrected = center_dis - lateral / LATERAL_SLOPE
-
-        mask_a = (center_z >= 2.3 - args.margin) & (center_z <= 4.5 + args.margin)
-        mask_b = (center_dis_corrected >= 2.3 - args.margin) & (
-            center_dis_corrected <= 3.8 + args.margin
-        )
-        mask_c = center_dis <= 5.0 + args.margin
-        mask = mask_a & mask_b & mask_c
-        if np.any(mask):
-            kept_disp.append(disp_chunk[mask])
-            kept_p.append(p_chunk[mask])
-
-    if kept_disp:
-        filtered_disp = np.concatenate(kept_disp, axis=0).astype(np.int32, copy=False)
-        filtered_p = np.concatenate(kept_p, axis=0).astype(np.uint16, copy=False)
-    else:
-        filtered_disp = np.empty((0,), dtype=np.int32)
-        filtered_p = np.empty((0,), dtype=np.uint16)
-
-    print(
-        f"[6/7] Surviving offset assignments: {len(filtered_disp)}",
-        file=sys.stderr,
     )
-    filtered_offsets_tuple = (filtered_disp, filtered_p, rounded, reverse_map)
-    translation_lists = expand_discrete_offsets(*filtered_offsets_tuple)
-    if not translation_lists:
-        _write_output_files([], Path(args.output[0]), Path(args.output[1]))
-        print("0 total solutions", file=sys.stderr)
+    try:
+        for conformer_index in tqdm(
+            selected_conformers,
+            desc="Conformer-angle filter",
+            unit="conf",
+            mininterval=2.0,
+        ):
+            ring_coordinates = coordinates[conformer_index, ring_mask]
+            if len(ring_coordinates) < 3:
+                continue
+
+            rotamer_end = int(rotaconformers_index[conformer_index])
+            rotamer_start = (
+                0
+                if conformer_index == 0
+                else int(rotaconformers_index[conformer_index - 1])
+            )
+            rotamer_count = rotamer_end - rotamer_start
+            if rotamer_count <= 0:
+                continue
+
+            if selected_rotamer_positions is None:
+                local_rotamer_indices = np.arange(rotamer_count, dtype=np.int64)
+            else:
+                local_rotamer_indices = selected_rotamer_positions.astype(
+                    np.int64, copy=False
+                )
+            global_rotamer_indices = rotamer_start + local_rotamer_indices
+
+            rotamer_matrices = _rotamers_to_matrices(
+                rotaconformers[global_rotamer_indices]
+            )
+            ring_rotated = np.einsum("ij,kjl->kil", ring_coordinates, rotamer_matrices)
+            ring_planes = _calc_planes(ring_rotated)
+
+            cross_norm = np.linalg.norm(
+                np.cross(protein_plane[None, :], ring_planes), axis=1
+            )
+            cross_norm = np.minimum(cross_norm, 1.0)
+            angles = np.arcsin(cross_norm)
+
+            ring_centers = ring_rotated.mean(axis=1)
+            ring_x = ring_rotated[:, 0, :] - ring_centers
+            ring_x -= (
+                np.einsum("ij,j->i", ring_x, protein_plane)[:, None]
+                * protein_plane[None, :]
+            )
+            ring_x_norm = np.linalg.norm(ring_x, axis=1)
+            degenerate = ring_x_norm < 0.0001
+            safe_norm = np.where(degenerate, 1.0, ring_x_norm)
+            normalized_ring_x = ring_x / safe_norm[:, None]
+            dihedral_x = np.einsum("ij,j->i", normalized_ring_x, protein_x)
+            dihedral_y = np.einsum("ij,j->i", normalized_ring_x, protein_y)
+            dihedral = np.angle(dihedral_x + 1.0j * dihedral_y)
+            dihedral[degenerate] = np.pi / 2
+
+            angle_mask = _dihedral_filter(
+                angles,
+                dihedral,
+                max_angle_deg=args.angle,
+                dihedral_min_deg=dihedral_min_deg,
+                dihedral_max_deg=dihedral_max_deg,
+            )
+            if not np.any(angle_mask):
+                continue
+
+            passing_rotamers_raw = local_rotamer_indices[angle_mask]
+            if (
+                len(passing_rotamers_raw)
+                and passing_rotamers_raw.max() > np.iinfo(np.uint16).max
+            ):
+                raise ValueError(
+                    "Rotamer index exceeds uint16 range; use --test-rotamers to constrain per-conformer rotamers"
+                )
+            if conformer_index > np.iinfo(np.uint16).max:
+                raise ValueError("Conformer index exceeds uint16 range")
+
+            passing_rotamers = passing_rotamers_raw.astype(np.uint16, copy=False)
+            passing_centers = ring_centers[angle_mask].astype(np.float32, copy=False)
+            if len(passing_centers) == 0:
+                continue
+
+            for batch_start in range(0, len(passing_centers), center_batch_size):
+                batch_end = min(batch_start + center_batch_size, len(passing_centers))
+                centers_batch = passing_centers[batch_start:batch_end]
+                rot_batch = passing_rotamers[batch_start:batch_end]
+
+                displacement_world = protein_center[None, :] - centers_batch
+                displacement_grid = displacement_world / GRID_SPACING
+                radius_grid = np.full(
+                    (len(displacement_grid),),
+                    (5.0 + args.margin) / GRID_SPACING,
+                    dtype=np.float32,
+                )
+                disp_indices, p_indices, rounded, reverse_map = get_discrete_offsets(
+                    displacement_grid,
+                    radius_grid,
+                )
+                if len(disp_indices) == 0:
+                    continue
+
+                total_candidates += len(disp_indices)
+                distance_pbar.update(len(disp_indices))
+
+                if reverse_table is None:
+                    reverse_table = np.empty(
+                        (max(reverse_map.keys()) + 1, 3),
+                        dtype=np.int16,
+                    )
+                    for p_index, xyz in reverse_map.items():
+                        reverse_table[p_index] = xyz
+
+                for offset_start in range(0, len(disp_indices), offset_chunk_size):
+                    offset_end = min(offset_start + offset_chunk_size, len(disp_indices))
+                    disp_chunk = disp_indices[offset_start:offset_end]
+                    p_chunk = p_indices[offset_start:offset_end]
+
+                    offset_grid = rounded[disp_chunk].astype(np.int16) + reverse_table[p_chunk]
+                    center_vec = (
+                        offset_grid.astype(np.float32) * GRID_SPACING
+                        - displacement_world[disp_chunk]
+                    )
+
+                    center_z = np.abs(center_vec[:, 2])
+                    center_dis = np.linalg.norm(center_vec, axis=1)
+                    axial = np.abs(center_vec.dot(protein_plane))
+                    axial = np.maximum(0.0, np.minimum(center_dis - 0.001, axial))
+                    lateral = np.sqrt(
+                        np.maximum(0.0, center_dis * center_dis - axial * axial)
+                    )
+                    center_dis_corrected = center_dis - lateral / LATERAL_SLOPE
+
+                    mask_a = (center_z >= 2.3 - args.margin) & (
+                        center_z <= 4.5 + args.margin
+                    )
+                    mask_b = (center_dis_corrected >= 2.3 - args.margin) & (
+                        center_dis_corrected <= 3.8 + args.margin
+                    )
+                    mask_c = center_dis <= 5.0 + args.margin
+                    keep_mask = mask_a & mask_b & mask_c
+                    if not np.any(keep_mask):
+                        continue
+
+                    kept_disp = disp_chunk[keep_mask]
+                    kept_p = p_chunk[keep_mask]
+                    total_surviving += len(kept_disp)
+
+                    translations = (
+                        rounded[kept_disp].astype(np.int16)
+                        + reverse_table[kept_p]
+                    )
+                    conformers_chunk = np.full(
+                        len(kept_disp),
+                        conformer_index,
+                        dtype=np.uint16,
+                    )
+                    rotamers_chunk = rot_batch[kept_disp]
+                    stream_acc.add_chunk(
+                        conformers_chunk,
+                        rotamers_chunk,
+                        translations,
+                    )
+        distance_pbar.close()
+        del rotaconformers, rotaconformers_index
+
+        print(
+            f"[6/7] Candidate offset assignments: {total_candidates}",
+            file=sys.stderr,
+        )
+        print(
+            f"[6/7] Surviving offset assignments: {total_surviving}",
+            file=sys.stderr,
+        )
+        print("[7/7] Packing and writing poses...", file=sys.stderr)
+        written = stream_acc.finish()
+        if len(written) > 1:
+            print(
+                f"[7/7] Output split into {len(written)} chunks (poses-*.npy, offsets-*.dat).",
+                file=sys.stderr,
+            )
+
+        print(f"{stream_acc.total_poses} total solutions", file=sys.stderr)
         return 0
-
-    print("[7/7] Packing and writing poses...", file=sys.stderr)
-    translation_indices, _ = gather_discrete_offsets(translation_lists)
-    expanded_conformer_indices = conformer_indices[translation_indices]
-    expanded_rotamer_indices = rotamer_indices[translation_indices]
-    packed = pack_all_poses(
-        expanded_conformer_indices,
-        expanded_rotamer_indices,
-        filtered_offsets_tuple,
-    )
-    _write_output_files(packed, Path(args.output[0]), Path(args.output[1]))
-
-    total_solutions = int(sum(len(chunk[0]) for chunk in packed))
-    print(f"{total_solutions} total solutions", file=sys.stderr)
-    return 0
+    finally:
+        if hasattr(distance_pbar, "disable") and not distance_pbar.disable:
+            distance_pbar.close()
+        stream_acc.cleanup()
 
 
 def main(argv: Sequence[str] | None = None) -> int:

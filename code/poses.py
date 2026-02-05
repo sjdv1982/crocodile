@@ -1,4 +1,5 @@
 from pathlib import Path
+import tempfile
 
 import numpy as np
 
@@ -45,35 +46,11 @@ def _finalize_chunk(
     results.append((poses, mean_offset, offsets_uint8))
 
 
-def pack_all_poses(
-    conformer_indices: np.ndarray,
-    rotamer_indices: np.ndarray,
-    offsets_tuple: tuple[np.ndarray, np.ndarray, np.ndarray, dict],
+def _pack_expanded_poses_slow(
+    conf: np.ndarray,
+    rot: np.ndarray,
+    translations: np.ndarray,
 ) -> list[tuple[np.ndarray, np.ndarray, np.ndarray]]:
-    """
-    Pack poses into the on-disk representation (poses.npy + offsets.dat).
-
-    Inputs are expanded per translation. Offsets are deduplicated and stored
-    in a table, with poses referencing them by index.
-    """
-    conf = _as_uint16_array("conformer_indices", conformer_indices)
-    rot = _as_uint16_array("rotamer_indices", rotamer_indices)
-    if conf.shape != rot.shape:
-        raise ValueError("conformer_indices and rotamer_indices must have same shape")
-
-    disp_indices, p_indices, rounded, reverse_map = offsets_tuple
-    translation_lists = expand_discrete_offsets(
-        disp_indices, p_indices, rounded, reverse_map
-    )
-    if not translation_lists:
-        return []
-
-    _, tdata = gather_discrete_offsets(translation_lists)
-    if len(conf) != len(tdata):
-        raise ValueError(
-            "Input indices length must match gathered translation length"
-        )
-
     results: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
     conf_list: list[int] = []
     rot_list: list[int] = []
@@ -84,8 +61,8 @@ def pack_all_poses(
     max_xyz: np.ndarray | None = None
     pose_count = 0
 
-    for i in range(len(tdata)):
-        trans = tdata[i].astype(np.int16, copy=False)
+    for i in range(len(translations)):
+        trans = translations[i].astype(np.int16, copy=False)
         key = (int(trans[0]), int(trans[1]), int(trans[2]))
         while True:
             new_offset = key not in offset_map
@@ -106,9 +83,7 @@ def pack_all_poses(
             need_new_chunk = too_wide or too_many_offsets or too_many_poses
 
             if need_new_chunk and pose_count > 0:
-                _finalize_chunk(
-                    results, conf_list, rot_list, off_idx_list, offsets_list
-                )
+                _finalize_chunk(results, conf_list, rot_list, off_idx_list, offsets_list)
                 conf_list = []
                 rot_list = []
                 off_idx_list = []
@@ -141,6 +116,398 @@ def pack_all_poses(
 
     _finalize_chunk(results, conf_list, rot_list, off_idx_list, offsets_list)
     return results
+
+
+def pack_expanded_poses(
+    conformer_indices: np.ndarray,
+    rotamer_indices: np.ndarray,
+    translations: np.ndarray,
+) -> list[tuple[np.ndarray, np.ndarray, np.ndarray]]:
+    """
+    Pack already-expanded poses and translations into the on-disk pose format.
+    """
+    conf = _as_uint16_array("conformer_indices", conformer_indices)
+    rot = _as_uint16_array("rotamer_indices", rotamer_indices)
+    if conf.shape != rot.shape:
+        raise ValueError("conformer_indices and rotamer_indices must have same shape")
+
+    translations = np.asarray(translations, dtype=np.int16)
+    if translations.ndim != 2 or translations.shape[1] != 3:
+        raise ValueError("translations must be a [N,3] array")
+    if len(translations) != len(conf):
+        raise ValueError("translations length must match conformer/rotamer indices")
+    if len(translations) == 0:
+        return []
+
+    if len(translations) <= 2**32:
+        min_xyz = translations.min(axis=0).astype(np.int32)
+        max_xyz = translations.max(axis=0).astype(np.int32)
+        spread = max_xyz - min_xyz
+        if np.all(spread <= 255):
+            translations_c = np.ascontiguousarray(translations, dtype=np.int16)
+            packed_dtype = np.dtype((np.void, translations_c.dtype.itemsize * 3))
+            packed_offsets = translations_c.view(packed_dtype).ravel()
+            unique_packed, inverse = np.unique(packed_offsets, return_inverse=True)
+            unique_offsets = unique_packed.view(np.int16).reshape(-1, 3)
+            if len(unique_offsets) <= 2**16:
+                max_xyz = unique_offsets.max(axis=0).astype(np.int32)
+                mean_offset = np.clip(max_xyz - 127, -32768, 32767).astype(np.int16)
+                offsets_int16 = unique_offsets.astype(np.int16)
+                offsets_int8 = (offsets_int16 - mean_offset).astype(np.int8)
+                if offsets_int8.max() <= 127 and offsets_int8.min() >= -128:
+                    poses = np.column_stack(
+                        (
+                            conf,
+                            rot,
+                            inverse.astype(np.uint16, copy=False),
+                        )
+                    )
+                    offsets_uint8 = offsets_int8.view(np.uint8)
+                    return [(poses, mean_offset, offsets_uint8)]
+
+    return _pack_expanded_poses_slow(conf, rot, translations)
+
+
+def pack_poses_from_discrete_offsets(
+    conformer_indices: np.ndarray,
+    rotamer_indices: np.ndarray,
+    offsets_tuple: tuple[np.ndarray, np.ndarray, np.ndarray, dict],
+    *,
+    reverse_table: np.ndarray | None = None,
+) -> list[tuple[np.ndarray, np.ndarray, np.ndarray]]:
+    """
+    Pack poses directly from flattened discrete-offset indices.
+
+    `conformer_indices` and `rotamer_indices` are indexed by displacement index.
+    `offsets_tuple` is `(disp_indices, p_indices, rounded, reverse_map)` where
+    `disp_indices` and `p_indices` are already flattened candidate assignments.
+    """
+    conf_by_disp = _as_uint16_array("conformer_indices", conformer_indices)
+    rot_by_disp = _as_uint16_array("rotamer_indices", rotamer_indices)
+    if conf_by_disp.shape != rot_by_disp.shape:
+        raise ValueError("conformer_indices and rotamer_indices must have same shape")
+
+    disp_indices, p_indices, rounded, reverse_map = offsets_tuple
+    disp_indices = np.asarray(disp_indices)
+    p_indices = np.asarray(p_indices)
+    rounded = np.asarray(rounded, dtype=np.int16)
+
+    if disp_indices.ndim != 1 or p_indices.ndim != 1:
+        raise ValueError("disp_indices and p_indices must be 1D arrays")
+    if len(disp_indices) != len(p_indices):
+        raise ValueError("disp_indices and p_indices must have the same length")
+    if rounded.ndim != 2 or rounded.shape[1] != 3:
+        raise ValueError("rounded must be a [N,3] array")
+    if len(disp_indices) == 0:
+        return []
+
+    if disp_indices.min() < 0 or disp_indices.max() >= len(conf_by_disp):
+        raise ValueError("disp_indices contains out-of-range displacement index")
+
+    if reverse_table is None:
+        max_p_index = max(reverse_map.keys()) if reverse_map else -1
+        reverse_table = np.empty((max_p_index + 1, 3), dtype=np.int16)
+        for p_index, xyz in reverse_map.items():
+            reverse_table[p_index] = xyz
+    else:
+        reverse_table = np.asarray(reverse_table, dtype=np.int16)
+        if reverse_table.ndim != 2 or reverse_table.shape[1] != 3:
+            raise ValueError("reverse_table must be a [P,3] array")
+
+    if p_indices.min() < 0 or p_indices.max() >= len(reverse_table):
+        raise ValueError("p_indices contains out-of-range P index")
+
+    disp_indices = disp_indices.astype(np.int64, copy=False)
+    p_indices = p_indices.astype(np.int64, copy=False)
+    expanded_conf = conf_by_disp[disp_indices]
+    expanded_rot = rot_by_disp[disp_indices]
+    expanded_offsets = rounded[disp_indices] + reverse_table[p_indices]
+    return pack_expanded_poses(expanded_conf, expanded_rot, expanded_offsets)
+
+
+class PoseStreamAccumulator:
+    def __init__(self, poses_path: str | Path, offsets_path: str | Path) -> None:
+        self._base_poses_path = Path(poses_path)
+        self._base_offsets_path = Path(offsets_path)
+        self._multi = False
+        self._chunk_index = 0
+        self._written_chunks: list[tuple[Path, Path]] = []
+        self._pose_count = 0
+        self.total_poses = 0
+        self._new_tempfile()
+        self._offset_map: dict[tuple[int, int, int], int] = {}
+        self._offsets: list[np.ndarray] = []
+        self._min_xyz: np.ndarray | None = None
+        self._max_xyz: np.ndarray | None = None
+
+    def _new_tempfile(self) -> None:
+        self._tmp = tempfile.NamedTemporaryFile(
+            prefix="poses_stream_", suffix=".bin", delete=False
+        )
+        self._tmp_path = Path(self._tmp.name)
+        self._tmp.close()
+
+    def _indexed_path(self, base: Path, index: int) -> Path:
+        suffix = base.suffix
+        stem = base.stem
+        return base.with_name(f"{stem}-{index}{suffix}")
+
+    def _ensure_multi(self) -> None:
+        if self._multi:
+            return
+        if not self._written_chunks:
+            return
+        poses0, offsets0 = self._written_chunks[0]
+        new_poses0 = self._indexed_path(self._base_poses_path, 0)
+        new_offsets0 = self._indexed_path(self._base_offsets_path, 0)
+        if poses0.exists():
+            poses0.rename(new_poses0)
+        if offsets0.exists():
+            offsets0.rename(new_offsets0)
+        self._written_chunks[0] = (new_poses0, new_offsets0)
+        self._multi = True
+
+    def _current_paths(self) -> tuple[Path, Path]:
+        if self._multi or self._chunk_index > 0:
+            return (
+                self._indexed_path(self._base_poses_path, self._chunk_index),
+                self._indexed_path(self._base_offsets_path, self._chunk_index),
+            )
+        return (self._base_poses_path, self._base_offsets_path)
+
+    def _register_offset(self, xyz: np.ndarray) -> int:
+        key = (int(xyz[0]), int(xyz[1]), int(xyz[2]))
+        existing = self._offset_map.get(key)
+        if existing is not None:
+            return existing
+
+        index = len(self._offsets)
+        if index >= 2**16:
+            raise ValueError("Too many unique offsets (>65536) for single chunk output")
+
+        xyz32 = xyz.astype(np.int32)
+        if self._min_xyz is None:
+            new_min = xyz32
+            new_max = xyz32
+        else:
+            new_min = np.minimum(self._min_xyz, xyz32)
+            new_max = np.maximum(self._max_xyz, xyz32)
+
+        if np.any((new_max - new_min) > 255):
+            raise ValueError("Offset spread exceeds 255 for single chunk output")
+
+        self._offset_map[key] = index
+        self._offsets.append(xyz.astype(np.int16, copy=True))
+        self._min_xyz = new_min
+        self._max_xyz = new_max
+        return index
+
+    def _try_add_batch(
+        self,
+        conformer_indices: np.ndarray,
+        rotamer_indices: np.ndarray,
+        translations: np.ndarray,
+    ) -> bool:
+        conf = _as_uint16_array("conformer_indices", conformer_indices)
+        rot = _as_uint16_array("rotamer_indices", rotamer_indices)
+        if conf.shape != rot.shape:
+            raise ValueError("conformer_indices and rotamer_indices must have same shape")
+
+        translations = np.asarray(translations, dtype=np.int16)
+        if translations.ndim != 2 or translations.shape[1] != 3:
+            raise ValueError("translations must be a [N,3] array")
+        if len(translations) != len(conf):
+            raise ValueError("translations length must match conformer/rotamer indices")
+        if len(translations) == 0:
+            return True
+
+        if self._pose_count + len(translations) > 2**32:
+            return False
+
+        translations_c = np.ascontiguousarray(translations, dtype=np.int16)
+        packed_dtype = np.dtype((np.void, translations_c.dtype.itemsize * 3))
+        packed_offsets = translations_c.view(packed_dtype).ravel()
+        unique_packed, inverse = np.unique(packed_offsets, return_inverse=True)
+        unique_offsets = unique_packed.view(np.int16).reshape(-1, 3)
+
+        new_offsets: list[np.ndarray] = []
+        new_min = None
+        new_max = None
+        unique_to_global = np.empty(len(unique_offsets), dtype=np.uint16)
+        for idx, xyz in enumerate(unique_offsets):
+            key = (int(xyz[0]), int(xyz[1]), int(xyz[2]))
+            existing = self._offset_map.get(key)
+            if existing is not None:
+                unique_to_global[idx] = existing
+                continue
+            new_offsets.append(xyz)
+            unique_to_global[idx] = len(self._offsets) + len(new_offsets) - 1
+            xyz32 = xyz.astype(np.int32)
+            if new_min is None:
+                new_min = xyz32
+                new_max = xyz32
+            else:
+                new_min = np.minimum(new_min, xyz32)
+                new_max = np.maximum(new_max, xyz32)
+
+        if len(self._offsets) + len(new_offsets) > 2**16:
+            return False
+
+        if new_min is not None:
+            if self._min_xyz is None:
+                combined_min = new_min
+                combined_max = new_max
+            else:
+                combined_min = np.minimum(self._min_xyz, new_min)
+                combined_max = np.maximum(self._max_xyz, new_max)
+            if np.any((combined_max - combined_min) > 255):
+                return False
+
+        for xyz in new_offsets:
+            key = (int(xyz[0]), int(xyz[1]), int(xyz[2]))
+            self._offset_map[key] = len(self._offsets)
+            self._offsets.append(xyz.astype(np.int16, copy=True))
+            if self._min_xyz is None:
+                self._min_xyz = xyz.astype(np.int32)
+                self._max_xyz = xyz.astype(np.int32)
+            else:
+                self._min_xyz = np.minimum(self._min_xyz, xyz.astype(np.int32))
+                self._max_xyz = np.maximum(self._max_xyz, xyz.astype(np.int32))
+
+        offset_indices = unique_to_global[inverse]
+        poses_chunk = np.column_stack((conf, rot, offset_indices))
+        with self._tmp_path.open("ab") as handle:
+            poses_chunk.tofile(handle)
+        self._pose_count += len(translations)
+        self.total_poses += len(translations)
+        return True
+
+    def add_chunk(
+        self,
+        conformer_indices: np.ndarray,
+        rotamer_indices: np.ndarray,
+        translations: np.ndarray,
+    ) -> None:
+        queue = [(conformer_indices, rotamer_indices, translations)]
+        while queue:
+            conf, rot, trans = queue.pop(0)
+            if len(trans) == 0:
+                continue
+            if self._try_add_batch(conf, rot, trans):
+                continue
+            if self._pose_count > 0:
+                self._flush_current()
+                queue.insert(0, (conf, rot, trans))
+            else:
+                if len(trans) == 1:
+                    raise ValueError("Single pose violates packing constraints")
+                mid = len(trans) // 2
+                queue.insert(0, (conf[mid:], rot[mid:], trans[mid:]))
+                queue.insert(0, (conf[:mid], rot[:mid], trans[:mid]))
+
+    def _flush_current(self) -> None:
+        if self._pose_count == 0:
+            self.cleanup()
+            self._new_tempfile()
+            return
+
+        if self._chunk_index > 0:
+            self._ensure_multi()
+
+        poses_path, offsets_path = self._current_paths()
+        poses_path.parent.mkdir(parents=True, exist_ok=True)
+        offsets_path.parent.mkdir(parents=True, exist_ok=True)
+
+        poses_mmap = np.lib.format.open_memmap(
+            poses_path,
+            mode="w+",
+            dtype=np.uint16,
+            shape=(self._pose_count, 3),
+        )
+        chunk_rows = 5_000_000
+        with self._tmp_path.open("rb") as handle:
+            row = 0
+            while row < self._pose_count:
+                nrows = min(chunk_rows, self._pose_count - row)
+                buf = np.fromfile(handle, dtype=np.uint16, count=nrows * 3)
+                if len(buf) != nrows * 3:
+                    raise ValueError("Unexpected EOF while materializing poses.npy")
+                poses_mmap[row : row + nrows] = buf.reshape((nrows, 3))
+                row += nrows
+        del poses_mmap
+
+        offsets_arr = np.array(self._offsets, dtype=np.int16)
+        max_xyz = offsets_arr.max(axis=0).astype(np.int32)
+        mean_offset = np.clip(max_xyz - 127, -32768, 32767).astype(np.int16)
+        offsets_int8 = (offsets_arr - mean_offset).astype(np.int8)
+        if offsets_int8.max() > 127 or offsets_int8.min() < -128:
+            raise ValueError("Offsets exceed int8 range after mean subtraction")
+        _write_offsets_file(offsets_path, mean_offset, offsets_int8.view(np.uint8))
+
+        self._written_chunks.append((poses_path, offsets_path))
+        self._chunk_index += 1
+        self._pose_count = 0
+        self._offset_map = {}
+        self._offsets = []
+        self._min_xyz = None
+        self._max_xyz = None
+        self.cleanup()
+        self._new_tempfile()
+
+    def finish(self) -> list[tuple[Path, Path]]:
+        if self.total_poses == 0:
+            poses_path, offsets_path = self._base_poses_path, self._base_offsets_path
+            poses_path.parent.mkdir(parents=True, exist_ok=True)
+            offsets_path.parent.mkdir(parents=True, exist_ok=True)
+            np.save(poses_path, np.empty((0, 3), dtype=np.uint16))
+            _write_offsets_file(
+                offsets_path,
+                np.zeros((3,), dtype=np.int16),
+                np.empty((0, 3), dtype=np.uint8),
+            )
+            self.cleanup()
+            return [(poses_path, offsets_path)]
+
+        self._flush_current()
+        if len(self._written_chunks) > 1:
+            self._ensure_multi()
+        self.cleanup()
+        return self._written_chunks
+
+    def cleanup(self) -> None:
+        if self._tmp_path.exists():
+            self._tmp_path.unlink()
+
+
+def pack_all_poses(
+    conformer_indices: np.ndarray,
+    rotamer_indices: np.ndarray,
+    offsets_tuple: tuple[np.ndarray, np.ndarray, np.ndarray, dict],
+) -> list[tuple[np.ndarray, np.ndarray, np.ndarray]]:
+    """
+    Pack poses into the on-disk representation (poses.npy + offsets.dat).
+
+    Inputs are expanded per translation. Offsets are deduplicated and stored
+    in a table, with poses referencing them by index.
+    """
+    conf = _as_uint16_array("conformer_indices", conformer_indices)
+    rot = _as_uint16_array("rotamer_indices", rotamer_indices)
+    if conf.shape != rot.shape:
+        raise ValueError("conformer_indices and rotamer_indices must have same shape")
+
+    disp_indices, p_indices, rounded, reverse_map = offsets_tuple
+    translation_lists = expand_discrete_offsets(
+        disp_indices, p_indices, rounded, reverse_map
+    )
+    if not translation_lists:
+        return []
+
+    _, tdata = gather_discrete_offsets(translation_lists)
+    if len(conf) != len(tdata):
+        raise ValueError(
+            "Input indices length must match gathered translation length"
+        )
+    return pack_expanded_poses(conf, rot, tdata)
 
 
 def unpack_poses(
