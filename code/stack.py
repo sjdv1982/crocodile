@@ -175,7 +175,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="M",
         help=(
-            "If set, reduce the rotamer library to M elements per conformer. "
+            "If set, reduce the rotamer library to M elements selected at random. "
             "The same rotamers are selected for all conformers from among the first R rotamers, "
             "where R is the smallest rotamer list among all conformers."
         ),
@@ -492,15 +492,14 @@ def _run(args: argparse.Namespace) -> int:
 
             if selected_rotamer_positions is None:
                 local_rotamer_indices = np.arange(rotamer_count, dtype=np.int64)
+                rotamer_block = rotaconformers[rotamer_start:rotamer_end]
             else:
                 local_rotamer_indices = selected_rotamer_positions.astype(
                     np.int64, copy=False
                 )
-            global_rotamer_indices = rotamer_start + local_rotamer_indices
+                rotamer_block = rotaconformers[rotamer_start + local_rotamer_indices]
 
-            rotamer_matrices = _rotamers_to_matrices(
-                rotaconformers[global_rotamer_indices]
-            )
+            rotamer_matrices = _rotamers_to_matrices(rotamer_block)
             ring_rotated = np.einsum("ij,kjl->kil", ring_coordinates, rotamer_matrices)
             ring_planes = _calc_planes(ring_rotated)
 
@@ -582,11 +581,15 @@ def _run(args: argparse.Namespace) -> int:
                         reverse_table[p_index] = xyz
 
                 for offset_start in range(0, len(disp_indices), offset_chunk_size):
-                    offset_end = min(offset_start + offset_chunk_size, len(disp_indices))
+                    offset_end = min(
+                        offset_start + offset_chunk_size, len(disp_indices)
+                    )
                     disp_chunk = disp_indices[offset_start:offset_end]
                     p_chunk = p_indices[offset_start:offset_end]
 
-                    offset_grid = rounded[disp_chunk].astype(np.int16) + reverse_table[p_chunk]
+                    offset_grid = (
+                        rounded[disp_chunk].astype(np.int16) + reverse_table[p_chunk]
+                    )
                     center_vec = (
                         offset_grid.astype(np.float32) * GRID_SPACING
                         - displacement_world[disp_chunk]
@@ -617,8 +620,7 @@ def _run(args: argparse.Namespace) -> int:
                     total_surviving += len(kept_disp)
 
                     translations = (
-                        rounded[kept_disp].astype(np.int16)
-                        + reverse_table[kept_p]
+                        rounded[kept_disp].astype(np.int16) + reverse_table[kept_p]
                     )
                     conformers_chunk = np.full(
                         len(kept_disp),
