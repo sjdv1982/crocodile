@@ -500,8 +500,10 @@ def _run(args: argparse.Namespace) -> int:
                 rotamer_block = rotaconformers[rotamer_start + local_rotamer_indices]
 
             rotamer_matrices = _rotamers_to_matrices(rotamer_block)
-            ring_rotated = np.einsum("ij,kjl->kil", ring_coordinates, rotamer_matrices)
-            ring_planes = _calc_planes(ring_rotated)
+            base_center = ring_coordinates.mean(axis=0)
+            base_plane = _calc_plane(ring_coordinates)
+            base_x = ring_coordinates[0] - base_center
+            ring_planes = base_plane @ rotamer_matrices
 
             cross_norm = np.linalg.norm(
                 np.cross(protein_plane[None, :], ring_planes), axis=1
@@ -509,8 +511,8 @@ def _run(args: argparse.Namespace) -> int:
             cross_norm = np.minimum(cross_norm, 1.0)
             angles = np.arcsin(cross_norm)
 
-            ring_centers = ring_rotated.mean(axis=1)
-            ring_x = ring_rotated[:, 0, :] - ring_centers
+            ring_centers = base_center @ rotamer_matrices
+            ring_x = base_x @ rotamer_matrices
             ring_x -= (
                 np.einsum("ij,j->i", ring_x, protein_plane)[:, None]
                 * protein_plane[None, :]
@@ -534,7 +536,12 @@ def _run(args: argparse.Namespace) -> int:
             if not np.any(angle_mask):
                 continue
 
-            passing_rotamers_raw = local_rotamer_indices[angle_mask]
+            if selected_rotamer_positions is None:
+                passing_rotamers_raw = np.flatnonzero(angle_mask).astype(
+                    np.int64, copy=False
+                )
+            else:
+                passing_rotamers_raw = local_rotamer_indices[angle_mask]
             if (
                 len(passing_rotamers_raw)
                 and passing_rotamers_raw.max() > np.iinfo(np.uint16).max
@@ -580,6 +587,7 @@ def _run(args: argparse.Namespace) -> int:
                     for p_index, xyz in reverse_map.items():
                         reverse_table[p_index] = xyz
 
+                rounded16 = rounded.astype(np.int16, copy=False)
                 for offset_start in range(0, len(disp_indices), offset_chunk_size):
                     offset_end = min(
                         offset_start + offset_chunk_size, len(disp_indices)
@@ -587,9 +595,7 @@ def _run(args: argparse.Namespace) -> int:
                     disp_chunk = disp_indices[offset_start:offset_end]
                     p_chunk = p_indices[offset_start:offset_end]
 
-                    offset_grid = (
-                        rounded[disp_chunk].astype(np.int16) + reverse_table[p_chunk]
-                    )
+                    offset_grid = rounded16[disp_chunk] + reverse_table[p_chunk]
                     center_vec = (
                         offset_grid.astype(np.float32) * GRID_SPACING
                         - displacement_world[disp_chunk]
@@ -619,9 +625,7 @@ def _run(args: argparse.Namespace) -> int:
                     kept_p = p_chunk[keep_mask]
                     total_surviving += len(kept_disp)
 
-                    translations = (
-                        rounded[kept_disp].astype(np.int16) + reverse_table[kept_p]
-                    )
+                    translations = rounded16[kept_disp] + reverse_table[kept_p]
                     conformers_chunk = np.full(
                         len(kept_disp),
                         conformer_index,
