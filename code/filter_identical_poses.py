@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import math
+import multiprocessing as mp
+import os
 import tempfile
 from collections import OrderedDict
 from pathlib import Path
@@ -79,12 +81,16 @@ def _count_poses(pairs: Iterable[tuple[Path, Path]]) -> int:
     for pose_path, _ in pairs:
         with open_pose_array(pose_path) as arr:
             if arr.ndim != 2 or arr.shape[1] != 3:
-                raise ValueError(f"Invalid pose array shape in {pose_path}: {arr.shape}")
+                raise ValueError(
+                    f"Invalid pose array shape in {pose_path}: {arr.shape}"
+                )
             total += int(arr.shape[0])
     return total
 
 
-def _make_records(poses_block: np.ndarray, offset_table: np.ndarray, start_idx: int) -> np.ndarray:
+def _make_records(
+    poses_block: np.ndarray, offset_table: np.ndarray, start_idx: int
+) -> np.ndarray:
     n = int(poses_block.shape[0])
     records = np.empty(n, dtype=RECORD_DTYPE)
     records["conf"] = poses_block[:, 0]
@@ -224,7 +230,9 @@ def _match_loaded_records(
         keys_b_void, return_index=True, return_counts=True
     )
 
-    _, ia, ib = np.intersect1d(unique_a, unique_b, assume_unique=True, return_indices=True)
+    _, ia, ib = np.intersect1d(
+        unique_a, unique_b, assume_unique=True, return_indices=True
+    )
     if ia.size == 0:
         return np.empty((0,), dtype=KEY_DTYPE)
 
@@ -274,7 +282,7 @@ def _write_match_records(
 def _match_bucket_recursive(
     file_a: Path,
     file_b: Path,
-    writer: PoseStreamAccumulator,
+    sink: PoseStreamAccumulator | object,
     max_bucket_bytes: int,
     block_records: int,
     depth: int,
@@ -294,7 +302,11 @@ def _match_bucket_recursive(
         rec_a = np.fromfile(file_a, dtype=RECORD_DTYPE)
         rec_b = np.fromfile(file_b, dtype=RECORD_DTYPE)
         keep = _match_loaded_records(rec_a, rec_b)
-        return _write_match_records(keep, writer, write_block)
+        if isinstance(sink, PoseStreamAccumulator):
+            return _write_match_records(keep, sink, write_block)
+        if keep.size:
+            keep.tofile(sink)
+        return int(keep.shape[0])
 
     with tempfile.TemporaryDirectory(prefix=f"pose_filter_rebucket_{depth}_") as tdir:
         tpath = Path(tdir)
@@ -316,7 +328,7 @@ def _match_bucket_recursive(
             ca = _match_bucket_recursive(
                 sub_a / f"bucket-{bucket:08d}.bin",
                 sub_b / f"bucket-{bucket:08d}.bin",
-                writer,
+                sink,
                 max_bucket_bytes,
                 block_records,
                 depth + 1,
@@ -325,7 +337,81 @@ def _match_bucket_recursive(
             )
             kept += ca
 
-        return kept
+    return kept
+
+
+def _process_bucket_group(
+    args: tuple[
+        list[int],
+        str,
+        str,
+        str,
+        int,
+        int,
+        int,
+        int,
+    ],
+) -> None:
+    (
+        bucket_list,
+        bucket_a_dir,
+        bucket_b_dir,
+        match_dir,
+        max_bucket_bytes,
+        block_records,
+        max_depth,
+        write_block,
+    ) = args
+    bucket_a = Path(bucket_a_dir)
+    bucket_b = Path(bucket_b_dir)
+    match_path = Path(match_dir)
+    match_path.mkdir(parents=True, exist_ok=True)
+    for bucket in bucket_list:
+        file_a = bucket_a / f"bucket-{bucket:08d}.bin"
+        file_b = bucket_b / f"bucket-{bucket:08d}.bin"
+        out_file = match_path / f"bucket-{bucket:08d}.bin"
+        with out_file.open("wb") as handle:
+            _match_bucket_recursive(
+                file_a,
+                file_b,
+                handle,
+                max_bucket_bytes=max_bucket_bytes,
+                block_records=block_records,
+                depth=0,
+                max_depth=max_depth,
+                write_block=write_block,
+            )
+
+
+def _write_matches_to_output(
+    outdir: Path,
+    match_dir: Path,
+    nbuckets: int,
+    max_poses_per_chunk: int,
+    block_size: int,
+) -> int:
+    writer = PoseStreamAccumulator(outdir, max_poses_per_chunk=max_poses_per_chunk)
+    total = 0
+    try:
+        for bucket in range(nbuckets):
+            file_path = match_dir / f"bucket-{bucket:08d}.bin"
+            if not file_path.exists() or file_path.stat().st_size == 0:
+                continue
+            with file_path.open("rb") as handle:
+                while True:
+                    records = np.fromfile(handle, dtype=KEY_DTYPE, count=block_size)
+                    if records.size == 0:
+                        break
+                    translations = np.empty((records.shape[0], 3), dtype=np.int16)
+                    translations[:, 0] = records["x"]
+                    translations[:, 1] = records["y"]
+                    translations[:, 2] = records["z"]
+                    writer.add_chunk(records["conf"], records["rot"], translations)
+                    total += records.shape[0]
+        writer.finish()
+    finally:
+        writer.cleanup()
+    return total
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -364,14 +450,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--memory-gb",
         type=float,
-        default=4.0,
-        help="Approximate memory budget in GB for matching buckets (default: 4.0).",
+        default=8.0,
+        help="Approximate memory budget in GB for matching buckets (default: 8.0).",
     )
     parser.add_argument(
         "--max-poses-per-chunk",
         type=int,
         default=2**32,
         help="Maximum number of poses per output file pair (default: 2**32).",
+    )
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Number of worker processes (default: 0 uses all CPUs).",
     )
     parser.add_argument(
         "--max-depth",
@@ -394,6 +487,8 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("--max-depth must be >= 0")
     if args.max_poses_per_chunk <= 0:
         raise ValueError("--max-poses-per-chunk must be positive")
+    if args.jobs < 0:
+        raise ValueError("--jobs must be >= 0")
 
     outdir = Path(args.output)
     if outdir.exists():
@@ -405,16 +500,24 @@ def main(argv: list[str] | None = None) -> int:
     total_a = _count_poses(set_a)
     total_b = _count_poses(set_b)
     if total_a == 0 or total_b == 0:
-        writer = PoseStreamAccumulator(outdir, max_poses_per_chunk=args.max_poses_per_chunk)
+        writer = PoseStreamAccumulator(
+            outdir, max_poses_per_chunk=args.max_poses_per_chunk
+        )
         writer.finish()
         print(f"set-a poses: {total_a}")
         print(f"set-b poses: {total_b}")
         print("matches: 0")
         return 0
 
-    mem_bytes = int(args.memory_gb * (1024**3))
+    jobs = args.jobs
+    if jobs == 0:
+        jobs = os.cpu_count() or 1
+    jobs = max(1, jobs)
+
+    mem_bytes_total = int(args.memory_gb * (1024**3))
+    mem_bytes_per_job = max(1, mem_bytes_total // jobs)
     # Heuristic: sorting + unique over structured arrays can briefly need ~3x record bytes.
-    target_records_per_bucket = max(1, mem_bytes // (RECORD_BYTES * 3))
+    target_records_per_bucket = max(1, mem_bytes_per_job // (RECORD_BYTES * 3))
     nbuckets = _pow2_ceil(math.ceil(max(total_a, total_b) / target_records_per_bucket))
     nbuckets = int(min(max(nbuckets, 8), 1 << 20))
     max_bucket_bytes = target_records_per_bucket * RECORD_BYTES
@@ -431,27 +534,64 @@ def main(argv: list[str] | None = None) -> int:
 
         _partition_pose_set(set_a, bucket_a, nbuckets, args.block_size)
         _partition_pose_set(set_b, bucket_b, nbuckets, args.block_size)
-        writer = PoseStreamAccumulator(outdir, max_poses_per_chunk=args.max_poses_per_chunk)
+        rebucket_block_records = max(1, args.block_size // 4)
+        write_block = max(1, args.block_size)
+
+        jobs = max(1, min(jobs, nbuckets))
+
         kept = 0
-        try:
-            rebucket_block_records = max(1, args.block_size // 4)
-            write_block = max(1, args.block_size)
-            for bucket in range(nbuckets):
-                file_a = bucket_a / f"bucket-{bucket:08d}.bin"
-                file_b = bucket_b / f"bucket-{bucket:08d}.bin"
-                kept += _match_bucket_recursive(
-                    file_a,
-                    file_b,
-                    writer,
-                    max_bucket_bytes=max_bucket_bytes,
-                    block_records=rebucket_block_records,
-                    depth=0,
-                    max_depth=args.max_depth,
-                    write_block=write_block,
+        if jobs == 1:
+            writer = PoseStreamAccumulator(
+                outdir,
+                max_poses_per_chunk=args.max_poses_per_chunk,
+            )
+            try:
+                for bucket in range(nbuckets):
+                    file_a = bucket_a / f"bucket-{bucket:08d}.bin"
+                    file_b = bucket_b / f"bucket-{bucket:08d}.bin"
+                    kept += _match_bucket_recursive(
+                        file_a,
+                        file_b,
+                        writer,
+                        max_bucket_bytes=max_bucket_bytes,
+                        block_records=rebucket_block_records,
+                        depth=0,
+                        max_depth=args.max_depth,
+                        write_block=write_block,
+                    )
+                writer.finish()
+            finally:
+                writer.cleanup()
+        else:
+            match_dir = tpath / "matches"
+            tasks = []
+            bucket_lists = [list(range(i, nbuckets, jobs)) for i in range(jobs)]
+            for idx, bucket_list in enumerate(bucket_lists):
+                if not bucket_list:
+                    continue
+                tasks.append(
+                    (
+                        bucket_list,
+                        str(bucket_a),
+                        str(bucket_b),
+                        str(match_dir),
+                        max_bucket_bytes,
+                        rebucket_block_records,
+                        args.max_depth,
+                        write_block,
+                    )
                 )
-            writer.finish()
-        finally:
-            writer.cleanup()
+
+            ctx = mp.get_context("fork")
+            with ctx.Pool(processes=len(tasks)) as pool:
+                pool.map(_process_bucket_group, tasks)
+            kept = _write_matches_to_output(
+                outdir,
+                match_dir,
+                nbuckets,
+                args.max_poses_per_chunk,
+                write_block,
+            )
 
     print(f"matches: {kept}")
     return 0
