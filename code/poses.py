@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from pathlib import Path
 import shutil
 import tempfile
@@ -566,7 +567,7 @@ def write_pose_files(
     return written
 
 
-def _pose_index_from_name(name: str) -> int | None:
+def pose_index_from_name(name: str) -> int | None:
     if name.endswith(".npy.zst"):
         base = name[:-4]
     elif name.endswith(".npy"):
@@ -579,6 +580,73 @@ def _pose_index_from_name(name: str) -> int | None:
     if not index_text.isdigit():
         return None
     return int(index_text)
+
+
+def discover_pose_pairs(directory: str | Path) -> list[tuple[Path, Path]]:
+    directory = Path(directory)
+    if not directory.exists() or not directory.is_dir():
+        raise FileNotFoundError(f"Pose directory not found: {directory}")
+
+    pose_files = list(directory.glob("poses-*.npy")) + list(
+        directory.glob("poses-*.npy.zst")
+    )
+    if not pose_files:
+        raise FileNotFoundError(f"No pose files found in {directory}")
+
+    indexed: dict[int, Path] = {}
+    for pose_path in pose_files:
+        index = pose_index_from_name(pose_path.name)
+        if index is None:
+            continue
+        if index not in indexed or indexed[index].name.endswith(".npy.zst"):
+            indexed[index] = pose_path
+
+    if not indexed:
+        raise FileNotFoundError(f"No poses-*.npy found in {directory}")
+
+    pairs: list[tuple[Path, Path]] = []
+    for index in sorted(indexed):
+        pose_path = indexed[index]
+        offsets_path = directory / f"offsets-{index}.dat"
+        if not offsets_path.exists():
+            raise FileNotFoundError(f"Missing {offsets_path} for {pose_path}")
+        pairs.append((pose_path, offsets_path))
+    return pairs
+
+
+@contextmanager
+def open_pose_array(path: Path):
+    if path.name.endswith(".npy.zst"):
+        try:
+            import zstandard as zstd
+        except ImportError as exc:
+            raise ImportError("zstandard is required to read .npy.zst pose files") from exc
+        tmp = tempfile.NamedTemporaryFile(prefix="poses_zst_", suffix=".npy", delete=False)
+        tmp_path = Path(tmp.name)
+        try:
+            with path.open("rb") as compressed:
+                dctx = zstd.ZstdDecompressor()
+                with dctx.stream_reader(compressed) as reader:
+                    shutil.copyfileobj(reader, tmp)
+            tmp.flush()
+            tmp.close()
+            arr = np.load(tmp_path, mmap_mode="r")
+            try:
+                yield arr
+            finally:
+                del arr
+        finally:
+            try:
+                tmp_path.unlink()
+            except FileNotFoundError:
+                pass
+        return
+
+    arr = np.load(path, mmap_mode="r")
+    try:
+        yield arr
+    finally:
+        del arr
 
 
 def _load_pose_array(path: Path) -> np.ndarray:
@@ -598,36 +666,19 @@ def _load_pose_array(path: Path) -> np.ndarray:
     return np.load(path, mmap_mode="r")
 
 
+def load_offset_table(path: Path) -> np.ndarray:
+    mean_offset, offsets_uint8 = _read_offsets_file(path)
+    offsets_int8 = offsets_uint8.view(np.int8)
+    return offsets_int8.astype(np.int16) + mean_offset.astype(np.int16)
+
+
 def read_pose_files(outdir: str | Path) -> list[tuple[np.ndarray, np.ndarray, np.ndarray]]:
     """
     Read poses-*.npy (or poses-*.npy.zst) and offsets-*.dat files from a directory.
     Returns a list of (poses, mean_offset, offsets) tuples.
     """
-    outdir = Path(outdir)
-    if not outdir.exists() or not outdir.is_dir():
-        raise FileNotFoundError(f"Pose directory not found: {outdir}")
-
-    pose_files = list(outdir.glob("poses-*.npy")) + list(outdir.glob("poses-*.npy.zst"))
-    if not pose_files:
-        raise FileNotFoundError("No poses-*.npy or poses-*.npy.zst found")
-
-    indexed: dict[int, Path] = {}
-    for pose_path in pose_files:
-        index = _pose_index_from_name(pose_path.name)
-        if index is None:
-            continue
-        if index not in indexed or indexed[index].name.endswith(".npy.zst"):
-            indexed[index] = pose_path
-
-    if not indexed:
-        raise FileNotFoundError("No valid poses-*.npy or poses-*.npy.zst files found")
-
     results: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
-    for index in sorted(indexed):
-        pose_path = indexed[index]
-        offsets_path = outdir / f"offsets-{index}.dat"
-        if not offsets_path.exists():
-            raise FileNotFoundError(f"Missing offsets file for {pose_path.name}")
+    for pose_path, offsets_path in discover_pose_pairs(outdir):
         poses = _load_pose_array(pose_path)
         mean_offset, offsets = _read_offsets_file(offsets_path)
         results.append((poses, mean_offset, offsets))

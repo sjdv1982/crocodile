@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import ast
 import math
 import tempfile
 from collections import OrderedDict
@@ -9,6 +8,13 @@ from pathlib import Path
 from typing import Iterable
 
 import numpy as np
+
+from poses import (
+    PoseStreamAccumulator,
+    discover_pose_pairs,
+    load_offset_table,
+    open_pose_array,
+)
 
 
 KEY_DTYPE = np.dtype(
@@ -23,8 +29,6 @@ KEY_DTYPE = np.dtype(
 )
 RECORD_DTYPE = np.dtype(KEY_DTYPE.descr + [("idx", "<u8")], align=False)
 RECORD_BYTES = RECORD_DTYPE.itemsize
-
-UINT64 = np.dtype("<u8")
 
 
 class BucketWriters:
@@ -55,141 +59,28 @@ class BucketWriters:
             handle.close()
 
 
-class IndexWriter:
-    def __init__(self, path: Path) -> None:
-        self.path = path
-        self._handle = path.open("wb")
-
-    def write(self, indices: np.ndarray) -> None:
-        if indices.size:
-            np.asarray(indices, dtype=np.uint64).tofile(self._handle)
-
-    def close(self) -> None:
-        self._handle.close()
-
-
 def _pow2_ceil(value: int) -> int:
     if value <= 1:
         return 1
     return 1 << (value - 1).bit_length()
 
 
-def _existing_path(path: str) -> str:
+def _existing_dir(path: str) -> str:
     p = Path(path)
     if not p.exists():
-        raise argparse.ArgumentTypeError(f"path does not exist: {path}")
+        raise argparse.ArgumentTypeError(f"directory does not exist: {path}")
+    if not p.is_dir():
+        raise argparse.ArgumentTypeError(f"not a directory: {path}")
     return path
-
-
-def _parse_pair_literal(value: str) -> tuple[Path, Path] | None:
-    text = value.strip()
-    if not text.startswith("["):
-        return None
-    try:
-        parsed = ast.literal_eval(text)
-    except (SyntaxError, ValueError):
-        return None
-    if not isinstance(parsed, (list, tuple)) or len(parsed) != 2:
-        return None
-    return Path(str(parsed[0])), Path(str(parsed[1]))
-
-
-def _read_pair_list(path: Path) -> list[tuple[Path, Path]]:
-    pairs: list[tuple[Path, Path]] = []
-    for line_no, line in enumerate(path.read_text().splitlines(), start=1):
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        fields = stripped.replace(",", " ").split()
-        if len(fields) != 2:
-            raise ValueError(
-                f"Invalid pair list line {line_no} in {path}: expected 2 paths"
-            )
-        pairs.append((Path(fields[0]), Path(fields[1])))
-    if not pairs:
-        raise ValueError(f"No path pairs found in list file: {path}")
-    return pairs
-
-
-def _discover_dir_pairs(directory: Path) -> list[tuple[Path, Path]]:
-    single_pose = directory / "poses.npy"
-    single_offset = directory / "offsets.dat"
-    if single_pose.exists():
-        if not single_offset.exists():
-            raise FileNotFoundError(f"Missing offsets.dat for {single_pose}")
-        return [(single_pose, single_offset)]
-
-    pose_files = sorted(directory.glob("poses-*.npy"))
-    if not pose_files:
-        raise FileNotFoundError(f"No pose files found in {directory}")
-
-    pairs: list[tuple[Path, Path]] = []
-    for pose_path in pose_files:
-        suffix = pose_path.stem.split("poses-")[-1]
-        offset_path = directory / f"offsets-{suffix}.dat"
-        if not offset_path.exists():
-            raise FileNotFoundError(f"Missing {offset_path} for {pose_path}")
-        pairs.append((pose_path, offset_path))
-    return pairs
-
-
-def resolve_pose_set(values: list[str], label: str) -> list[tuple[Path, Path]]:
-    if len(values) == 2:
-        pair = (Path(values[0]), Path(values[1]))
-        return [pair]
-
-    if len(values) == 1:
-        literal_pair = _parse_pair_literal(values[0])
-        if literal_pair is not None:
-            return [literal_pair]
-
-        path = Path(values[0])
-        if path.is_dir():
-            return _discover_dir_pairs(path)
-        if path.is_file():
-            suffix = path.suffix.lower()
-            if suffix in {".txt", ".list", ".lst"}:
-                return _read_pair_list(path)
-            raise ValueError(
-                f"{label}: single file input must be a list file (.txt/.list/.lst), got {path}"
-            )
-
-    raise ValueError(
-        f"{label}: provide exactly two paths (poses offsets), or one directory, or one list file"
-    )
-
-
-def _validate_pairs(pairs: list[tuple[Path, Path]], label: str) -> list[tuple[Path, Path]]:
-    checked: list[tuple[Path, Path]] = []
-    for pose_path, offset_path in pairs:
-        if not pose_path.exists() or not pose_path.is_file():
-            raise FileNotFoundError(f"{label}: pose file not found: {pose_path}")
-        if not offset_path.exists() or not offset_path.is_file():
-            raise FileNotFoundError(f"{label}: offsets file not found: {offset_path}")
-        checked.append((pose_path, offset_path))
-    return checked
-
-
-def _load_offset_table(path: Path) -> np.ndarray:
-    raw = path.read_bytes()
-    if len(raw) < 6:
-        raise ValueError(f"Offsets file too small: {path}")
-    mean = np.frombuffer(raw[:6], dtype=np.int16).copy()
-    rem = raw[6:]
-    if len(rem) % 3 != 0:
-        raise ValueError(f"Invalid offsets remainder length in {path}")
-    table_u8 = np.frombuffer(rem, dtype=np.uint8)
-    table_u8 = table_u8.reshape((-1, 3))
-    return table_u8.view(np.int8).astype(np.int16) + mean.astype(np.int16)
 
 
 def _count_poses(pairs: Iterable[tuple[Path, Path]]) -> int:
     total = 0
     for pose_path, _ in pairs:
-        arr = np.load(pose_path, mmap_mode="r")
-        if arr.ndim != 2 or arr.shape[1] != 3:
-            raise ValueError(f"Invalid pose array shape in {pose_path}: {arr.shape}")
-        total += int(arr.shape[0])
+        with open_pose_array(pose_path) as arr:
+            if arr.ndim != 2 or arr.shape[1] != 3:
+                raise ValueError(f"Invalid pose array shape in {pose_path}: {arr.shape}")
+            total += int(arr.shape[0])
     return total
 
 
@@ -235,23 +126,22 @@ def _partition_pose_set(
 
     try:
         for pose_path, offset_path in pairs:
-            pose_arr = np.load(pose_path, mmap_mode="r")
-            offset_table = _load_offset_table(offset_path)
+            offset_table = load_offset_table(offset_path)
+            with open_pose_array(pose_path) as pose_arr:
+                for start in range(0, pose_arr.shape[0], block_size):
+                    stop = min(start + block_size, pose_arr.shape[0])
+                    block = np.asarray(pose_arr[start:stop], dtype=np.uint16)
+                    records = _make_records(block, offset_table, global_idx)
+                    buckets = _bucket_ids(records, nbuckets)
 
-            for start in range(0, pose_arr.shape[0], block_size):
-                stop = min(start + block_size, pose_arr.shape[0])
-                block = np.asarray(pose_arr[start:stop], dtype=np.uint16)
-                records = _make_records(block, offset_table, global_idx)
-                buckets = _bucket_ids(records, nbuckets)
+                    unique_buckets = np.unique(buckets)
+                    for bucket in unique_buckets:
+                        mask = buckets == bucket
+                        subset = records[mask]
+                        writers.write(int(bucket), subset)
+                        counts[int(bucket)] += np.uint64(subset.shape[0])
 
-                unique_buckets = np.unique(buckets)
-                for bucket in unique_buckets:
-                    mask = buckets == bucket
-                    subset = records[mask]
-                    writers.write(int(bucket), subset)
-                    counts[int(bucket)] += np.uint64(subset.shape[0])
-
-                global_idx += block.shape[0]
+                    global_idx += block.shape[0]
     finally:
         writers.close()
 
@@ -290,9 +180,9 @@ def _partition_existing_records(
 def _match_loaded_records(
     records_a: np.ndarray,
     records_b: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> np.ndarray:
     if records_a.size == 0 or records_b.size == 0:
-        return np.empty((0,), dtype=np.uint64), np.empty((0,), dtype=np.uint64)
+        return np.empty((0,), dtype=KEY_DTYPE)
 
     order_a = np.lexsort(
         (
@@ -336,41 +226,65 @@ def _match_loaded_records(
 
     _, ia, ib = np.intersect1d(unique_a, unique_b, assume_unique=True, return_indices=True)
     if ia.size == 0:
-        return np.empty((0,), dtype=np.uint64), np.empty((0,), dtype=np.uint64)
+        return np.empty((0,), dtype=KEY_DTYPE)
 
-    keep_a: list[np.ndarray] = []
-    keep_b: list[np.ndarray] = []
-    for pos_a, pos_b in zip(ia, ib):
-        n = min(int(count_a[pos_a]), int(count_b[pos_b]))
-        if n == 0:
+    take_counts = np.minimum(count_a[ia], count_b[ib]).astype(np.int64, copy=False)
+    total = int(take_counts.sum())
+    if total == 0:
+        return np.empty((0,), dtype=KEY_DTYPE)
+
+    out = np.empty(total, dtype=KEY_DTYPE)
+    out_pos = 0
+    for pos_a, n_take in zip(ia, take_counts):
+        if n_take == 0:
             continue
-        a_slice = slice(int(start_a[pos_a]), int(start_a[pos_a]) + n)
-        b_slice = slice(int(start_b[pos_b]), int(start_b[pos_b]) + n)
-        keep_a.append(records_a["idx"][a_slice])
-        keep_b.append(records_b["idx"][b_slice])
+        start = int(start_a[pos_a])
+        end = start + int(n_take)
+        subset = records_a[start:end]
+        dest = out[out_pos : out_pos + int(n_take)]
+        dest["conf"] = subset["conf"]
+        dest["rot"] = subset["rot"]
+        dest["x"] = subset["x"]
+        dest["y"] = subset["y"]
+        dest["z"] = subset["z"]
+        out_pos += int(n_take)
 
-    if keep_a:
-        out_a = np.concatenate(keep_a).astype(np.uint64, copy=False)
-        out_b = np.concatenate(keep_b).astype(np.uint64, copy=False)
-        return out_a, out_b
+    return out
 
-    return np.empty((0,), dtype=np.uint64), np.empty((0,), dtype=np.uint64)
+
+def _write_match_records(
+    records: np.ndarray,
+    writer: PoseStreamAccumulator,
+    block_size: int,
+) -> int:
+    if records.size == 0:
+        return 0
+    total = int(records.shape[0])
+    for start in range(0, total, block_size):
+        stop = min(start + block_size, total)
+        block = records[start:stop]
+        translations = np.empty((block.shape[0], 3), dtype=np.int16)
+        translations[:, 0] = block["x"]
+        translations[:, 1] = block["y"]
+        translations[:, 2] = block["z"]
+        writer.add_chunk(block["conf"], block["rot"], translations)
+    return total
 
 
 def _match_bucket_recursive(
     file_a: Path,
     file_b: Path,
-    out_a: IndexWriter,
-    out_b: IndexWriter,
+    writer: PoseStreamAccumulator,
     max_bucket_bytes: int,
     block_records: int,
     depth: int,
     max_depth: int,
-) -> tuple[int, int]:
+    write_block: int,
+) -> int:
     if not file_a.exists() or not file_b.exists():
-        return 0, 0
+        return 0
     if file_a.stat().st_size == 0 or file_b.stat().st_size == 0:
-        return 0, 0
+        return 0
 
     size_a = file_a.stat().st_size
     size_b = file_b.stat().st_size
@@ -379,10 +293,8 @@ def _match_bucket_recursive(
     if largest <= max_bucket_bytes or depth >= max_depth:
         rec_a = np.fromfile(file_a, dtype=RECORD_DTYPE)
         rec_b = np.fromfile(file_b, dtype=RECORD_DTYPE)
-        keep_a, keep_b = _match_loaded_records(rec_a, rec_b)
-        out_a.write(keep_a)
-        out_b.write(keep_b)
-        return int(keep_a.size), int(keep_b.size)
+        keep = _match_loaded_records(rec_a, rec_b)
+        return _write_match_records(keep, writer, write_block)
 
     with tempfile.TemporaryDirectory(prefix=f"pose_filter_rebucket_{depth}_") as tdir:
         tpath = Path(tdir)
@@ -399,88 +311,44 @@ def _match_bucket_recursive(
         _partition_existing_records(file_a, sub_a, sub_nbuckets, block_records, salt)
         _partition_existing_records(file_b, sub_b, sub_nbuckets, block_records, salt)
 
-        kept_a = 0
-        kept_b = 0
+        kept = 0
         for bucket in range(sub_nbuckets):
-            ca, cb = _match_bucket_recursive(
+            ca = _match_bucket_recursive(
                 sub_a / f"bucket-{bucket:08d}.bin",
                 sub_b / f"bucket-{bucket:08d}.bin",
-                out_a,
-                out_b,
+                writer,
                 max_bucket_bytes,
                 block_records,
                 depth + 1,
                 max_depth,
+                write_block,
             )
-            kept_a += ca
-            kept_b += cb
+            kept += ca
 
-        return kept_a, kept_b
-
-
-def _raw_file_size_in_items(path: Path, dtype: np.dtype) -> int:
-    if not path.exists():
-        return 0
-    size = path.stat().st_size
-    if size % dtype.itemsize != 0:
-        raise ValueError(f"Corrupt raw file size for {path}")
-    return size // dtype.itemsize
-
-
-def _raw_to_npy(raw_path: Path, out_path: Path) -> int:
-    n = _raw_file_size_in_items(raw_path, UINT64)
-    out = np.lib.format.open_memmap(out_path, mode="w+", dtype=np.uint64, shape=(n,))
-    if n == 0:
-        del out
-        return 0
-
-    chunk = 4_000_000
-    with raw_path.open("rb") as handle:
-        start = 0
-        while start < n:
-            count = min(chunk, n - start)
-            part = np.fromfile(handle, dtype=np.uint64, count=count)
-            if part.size != count:
-                raise RuntimeError("Unexpected EOF while writing output .npy")
-            out[start : start + count] = part
-            start += count
-
-    del out
-    return n
+        return kept
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="filter_identical_poses",
         description=(
-            "Intersect two pose sets without loading all poses into memory. "
-            "A set can be: two paths (poses + offsets), one directory, "
-            "or one list file containing 'poses offsets' pairs."
+            "Intersect two pose directories without loading all poses into memory. "
+            "Writes matched poses into an output directory."
         ),
     )
     parser.add_argument(
-        "--set-a",
-        nargs="+",
-        required=True,
-        type=_existing_path,
-        help="Set A specification.",
+        "set_a",
+        type=_existing_dir,
+        help="Input pose directory A.",
     )
     parser.add_argument(
-        "--set-b",
-        nargs="+",
-        required=True,
-        type=_existing_path,
-        help="Set B specification.",
+        "set_b",
+        type=_existing_dir,
+        help="Input pose directory B.",
     )
     parser.add_argument(
-        "--out-a",
-        required=True,
-        help="Output .npy file with global indices of matching poses in set A.",
-    )
-    parser.add_argument(
-        "--out-b",
-        required=True,
-        help="Output .npy file with global indices of matching poses in set B.",
+        "output",
+        help="Output pose directory (must not exist).",
     )
     parser.add_argument(
         "--tmpdir",
@@ -498,6 +366,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=4.0,
         help="Approximate memory budget in GB for matching buckets (default: 4.0).",
+    )
+    parser.add_argument(
+        "--max-poses-per-chunk",
+        type=int,
+        default=2**32,
+        help="Maximum number of poses per output file pair (default: 2**32).",
     )
     parser.add_argument(
         "--max-depth",
@@ -518,17 +392,21 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("--memory-gb must be positive")
     if args.max_depth < 0:
         raise ValueError("--max-depth must be >= 0")
+    if args.max_poses_per_chunk <= 0:
+        raise ValueError("--max-poses-per-chunk must be positive")
 
-    set_a = _validate_pairs(resolve_pose_set(args.set_a, "set-a"), "set-a")
-    set_b = _validate_pairs(resolve_pose_set(args.set_b, "set-b"), "set-b")
+    outdir = Path(args.output)
+    if outdir.exists():
+        raise ValueError(f"Output directory already exists: {outdir}")
+
+    set_a = discover_pose_pairs(Path(args.set_a))
+    set_b = discover_pose_pairs(Path(args.set_b))
 
     total_a = _count_poses(set_a)
     total_b = _count_poses(set_b)
     if total_a == 0 or total_b == 0:
-        out_a_path = Path(args.out_a)
-        out_b_path = Path(args.out_b)
-        np.save(out_a_path, np.empty((0,), dtype=np.uint64))
-        np.save(out_b_path, np.empty((0,), dtype=np.uint64))
+        writer = PoseStreamAccumulator(outdir, max_poses_per_chunk=args.max_poses_per_chunk)
+        writer.finish()
         print(f"set-a poses: {total_a}")
         print(f"set-b poses: {total_b}")
         print("matches: 0")
@@ -553,42 +431,29 @@ def main(argv: list[str] | None = None) -> int:
 
         _partition_pose_set(set_a, bucket_a, nbuckets, args.block_size)
         _partition_pose_set(set_b, bucket_b, nbuckets, args.block_size)
-
-        raw_a = tpath / "matched-a.raw"
-        raw_b = tpath / "matched-b.raw"
-        writer_a = IndexWriter(raw_a)
-        writer_b = IndexWriter(raw_b)
-        kept_a = 0
-        kept_b = 0
-
+        writer = PoseStreamAccumulator(outdir, max_poses_per_chunk=args.max_poses_per_chunk)
+        kept = 0
         try:
             rebucket_block_records = max(1, args.block_size // 4)
+            write_block = max(1, args.block_size)
             for bucket in range(nbuckets):
                 file_a = bucket_a / f"bucket-{bucket:08d}.bin"
                 file_b = bucket_b / f"bucket-{bucket:08d}.bin"
-                ca, cb = _match_bucket_recursive(
+                kept += _match_bucket_recursive(
                     file_a,
                     file_b,
-                    writer_a,
-                    writer_b,
+                    writer,
                     max_bucket_bytes=max_bucket_bytes,
                     block_records=rebucket_block_records,
                     depth=0,
                     max_depth=args.max_depth,
+                    write_block=write_block,
                 )
-                kept_a += ca
-                kept_b += cb
+            writer.finish()
         finally:
-            writer_a.close()
-            writer_b.close()
+            writer.cleanup()
 
-        out_a_count = _raw_to_npy(raw_a, Path(args.out_a))
-        out_b_count = _raw_to_npy(raw_b, Path(args.out_b))
-
-    assert kept_a == out_a_count
-    assert kept_b == out_b_count
-
-    print(f"matches: {kept_a}")
+    print(f"matches: {kept}")
     return 0
 
 

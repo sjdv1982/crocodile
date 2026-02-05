@@ -6,6 +6,7 @@ import numpy as np
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "code"))
 from filter_identical_poses import main
+from poses import read_pose_files, unpack_poses
 
 
 def _write_pose_pair(
@@ -27,11 +28,21 @@ def _write_pose_pair(
         handle.write(encoded.tobytes(order="C"))
 
 
+def _poses_to_tuples(packed: list[tuple[np.ndarray, np.ndarray, np.ndarray]]) -> list[tuple[int, int, int, int, int]]:
+    out: list[tuple[int, int, int, int, int]] = []
+    for poses, mean, offsets in packed:
+        conf, rot, off_idx, offset_table = unpack_poses(poses, mean, offsets)
+        coords = offset_table[off_idx.astype(np.int64)]
+        for c, r, xyz in zip(conf, rot, coords):
+            out.append((int(c), int(r), int(xyz[0]), int(xyz[1]), int(xyz[2])))
+    return out
+
+
 def test_filter_identical_poses_handles_different_offset_means(tmp_path: Path) -> None:
-    set_a_pose = tmp_path / "a-poses.npy"
-    set_a_off = tmp_path / "a-offsets.dat"
-    set_b_pose = tmp_path / "b-poses.npy"
-    set_b_off = tmp_path / "b-offsets.dat"
+    set_a_dir = tmp_path / "set-a"
+    set_b_dir = tmp_path / "set-b"
+    set_a_dir.mkdir()
+    set_b_dir.mkdir()
 
     offsets_a = np.array([[10, 20, 30], [5, 5, 5]], dtype=np.int16)
     offsets_b = np.array([[10, 20, 30], [5, 5, 5], [7, 8, 9]], dtype=np.int16)
@@ -53,23 +64,27 @@ def test_filter_identical_poses_handles_different_offset_means(tmp_path: Path) -
         dtype=np.uint16,
     )
 
-    _write_pose_pair(set_a_pose, set_a_off, poses_a, np.array([10, 20, 30]), offsets_a)
-    _write_pose_pair(set_b_pose, set_b_off, poses_b, np.array([0, 0, 0]), offsets_b)
+    _write_pose_pair(
+        set_a_dir / "poses-1.npy",
+        set_a_dir / "offsets-1.dat",
+        poses_a,
+        np.array([10, 20, 30]),
+        offsets_a,
+    )
+    _write_pose_pair(
+        set_b_dir / "poses-1.npy",
+        set_b_dir / "offsets-1.dat",
+        poses_b,
+        np.array([0, 0, 0]),
+        offsets_b,
+    )
 
-    out_a = tmp_path / "keep-a.npy"
-    out_b = tmp_path / "keep-b.npy"
+    out_dir = tmp_path / "out-poses"
     rc = main(
         [
-            "--set-a",
-            str(set_a_pose),
-            str(set_a_off),
-            "--set-b",
-            str(set_b_pose),
-            str(set_b_off),
-            "--out-a",
-            str(out_a),
-            "--out-b",
-            str(out_b),
+            str(set_a_dir),
+            str(set_b_dir),
+            str(out_dir),
             "--memory-gb",
             "0.01",
             "--block-size",
@@ -78,68 +93,54 @@ def test_filter_identical_poses_handles_different_offset_means(tmp_path: Path) -
     )
     assert rc == 0
 
-    keep_a = np.load(out_a)
-    keep_b = np.load(out_b)
+    packed = read_pose_files(out_dir)
+    tuples = _poses_to_tuples(packed)
+    assert len(tuples) == 2
+    assert set(tuples) == {(1, 2, 10, 20, 30), (3, 4, 5, 5, 5)}
 
-    assert np.array_equal(np.sort(keep_a), np.array([0, 1], dtype=np.uint64))
-    assert np.array_equal(np.sort(keep_b), np.array([0, 2], dtype=np.uint64))
 
-
-def test_filter_identical_poses_accepts_directory_and_list_file(tmp_path: Path) -> None:
-    # Set A as split directory
+def test_filter_identical_poses_accepts_directory(tmp_path: Path) -> None:
     set_a_dir = tmp_path / "set-a"
+    set_b_dir = tmp_path / "set-b"
     set_a_dir.mkdir()
+    set_b_dir.mkdir()
     offsets = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int16)
 
     _write_pose_pair(
-        set_a_dir / "poses-0.npy",
-        set_a_dir / "offsets-0.dat",
+        set_a_dir / "poses-1.npy",
+        set_a_dir / "offsets-1.dat",
         np.array([[10, 20, 0]], dtype=np.uint16),
         np.array([0, 0, 0], dtype=np.int16),
         offsets,
     )
     _write_pose_pair(
-        set_a_dir / "poses-1.npy",
-        set_a_dir / "offsets-1.dat",
+        set_a_dir / "poses-2.npy",
+        set_a_dir / "offsets-2.dat",
         np.array([[11, 21, 1]], dtype=np.uint16),
         np.array([0, 0, 0], dtype=np.int16),
         offsets,
     )
 
-    # Set B as list-of-two-files input
-    set_b_pose = tmp_path / "b-poses.npy"
-    set_b_off = tmp_path / "b-offsets.dat"
     _write_pose_pair(
-        set_b_pose,
-        set_b_off,
+        set_b_dir / "poses-1.npy",
+        set_b_dir / "offsets-1.dat",
         np.array([[10, 20, 0], [50, 60, 1]], dtype=np.uint16),
         np.array([0, 0, 0], dtype=np.int16),
         offsets,
     )
 
-    list_file = tmp_path / "set-b.list"
-    list_file.write_text(f"{set_b_pose} {set_b_off}\n")
-
-    out_a = tmp_path / "dir-list-keep-a.npy"
-    out_b = tmp_path / "dir-list-keep-b.npy"
+    out_dir = tmp_path / "dir-keep-out"
     rc = main(
         [
-            "--set-a",
             str(set_a_dir),
-            "--set-b",
-            str(list_file),
-            "--out-a",
-            str(out_a),
-            "--out-b",
-            str(out_b),
+            str(set_b_dir),
+            str(out_dir),
             "--memory-gb",
             "0.01",
         ]
     )
     assert rc == 0
 
-    keep_a = np.load(out_a)
-    keep_b = np.load(out_b)
-
-    assert np.array_equal(keep_a, np.array([0], dtype=np.uint64))
-    assert np.array_equal(keep_b, np.array([0], dtype=np.uint64))
+    packed = read_pose_files(out_dir)
+    tuples = _poses_to_tuples(packed)
+    assert tuples == [(10, 20, 1, 2, 3)]
