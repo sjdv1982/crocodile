@@ -5,7 +5,9 @@ import tempfile
 
 import numpy as np
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", "code"))
+here = os.path.dirname(__file__)
+sys.path.append(os.path.join(here, "..", "code"))
+sys.path.append(here)
 from pose_test_data import generate_pose_test_data
 from poses import pack_all_poses, read_pose_files, unpack_poses, write_pose_files
 
