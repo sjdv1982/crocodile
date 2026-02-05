@@ -145,13 +145,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--output",
-        nargs=2,
-        metavar=("POSES_OUT", "OFFSETS_OUT"),
+        metavar="POSE_DIR",
         required=True,
-        help=(
-            "Two output filenames: pose indices (e.g. poses.npy) and offset table "
-            "(e.g. offsets.dat). Names are not defaulted."
-        ),
+        help="Output directory where poses-*.npy and offsets-*.dat are written (must not exist).",
+    )
+    parser.add_argument(
+        "--max-poses-per-chunk",
+        type=int,
+        default=30_000_000,
+        metavar="N",
+        help="Maximum number of poses per output file pair (default: 30000000).",
     )
     parser.add_argument(
         "--test-seed",
@@ -392,6 +395,12 @@ def _run(args: argparse.Namespace) -> int:
     dihedral_min_deg, dihedral_max_deg = _dihedral_pair(args.dihedral)
     if args.margin < 0:
         raise ValueError("--margin must be non-negative")
+    if args.max_poses_per_chunk <= 0:
+        raise ValueError("--max-poses-per-chunk must be positive")
+
+    output_dir = Path(args.output)
+    if output_dir.exists():
+        raise ValueError(f"--output directory already exists: {output_dir}")
 
     print("[1/7] Loading protein structure...", file=sys.stderr)
     protein_atoms = parse_pdb(Path(args.protein).read_text())
@@ -451,7 +460,10 @@ def _run(args: argparse.Namespace) -> int:
     total_surviving = 0
     reverse_table: np.ndarray | None = None
 
-    stream_acc = PoseStreamAccumulator(Path(args.output[0]), Path(args.output[1]))
+    stream_acc = PoseStreamAccumulator(
+        output_dir,
+        max_poses_per_chunk=args.max_poses_per_chunk,
+    )
     distance_pbar = tqdm(
         desc="Offset-distance filter",
         unit="cand",

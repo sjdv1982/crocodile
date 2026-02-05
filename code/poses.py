@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 import tempfile
 
 import numpy as np
@@ -226,11 +227,19 @@ def pack_poses_from_discrete_offsets(
 
 
 class PoseStreamAccumulator:
-    def __init__(self, poses_path: str | Path, offsets_path: str | Path) -> None:
-        self._base_poses_path = Path(poses_path)
-        self._base_offsets_path = Path(offsets_path)
-        self._multi = False
-        self._chunk_index = 0
+    def __init__(
+        self,
+        outdir: str | Path,
+        *,
+        max_poses_per_chunk: int = 2**32,
+    ) -> None:
+        self._outdir = Path(outdir)
+        self._max_poses_per_chunk = int(max_poses_per_chunk)
+        if self._max_poses_per_chunk <= 0:
+            raise ValueError("max_poses_per_chunk must be positive")
+        if self._max_poses_per_chunk > 2**32:
+            raise ValueError("max_poses_per_chunk must be <= 2**32")
+        self._chunk_index = 1
         self._written_chunks: list[tuple[Path, Path]] = []
         self._pose_count = 0
         self.total_poses = 0
@@ -247,33 +256,11 @@ class PoseStreamAccumulator:
         self._tmp_path = Path(self._tmp.name)
         self._tmp.close()
 
-    def _indexed_path(self, base: Path, index: int) -> Path:
-        suffix = base.suffix
-        stem = base.stem
-        return base.with_name(f"{stem}-{index}{suffix}")
-
-    def _ensure_multi(self) -> None:
-        if self._multi:
-            return
-        if not self._written_chunks:
-            return
-        poses0, offsets0 = self._written_chunks[0]
-        new_poses0 = self._indexed_path(self._base_poses_path, 0)
-        new_offsets0 = self._indexed_path(self._base_offsets_path, 0)
-        if poses0.exists():
-            poses0.rename(new_poses0)
-        if offsets0.exists():
-            offsets0.rename(new_offsets0)
-        self._written_chunks[0] = (new_poses0, new_offsets0)
-        self._multi = True
-
     def _current_paths(self) -> tuple[Path, Path]:
-        if self._multi or self._chunk_index > 0:
-            return (
-                self._indexed_path(self._base_poses_path, self._chunk_index),
-                self._indexed_path(self._base_offsets_path, self._chunk_index),
-            )
-        return (self._base_poses_path, self._base_offsets_path)
+        return (
+            self._outdir / f"poses-{self._chunk_index}.npy",
+            self._outdir / f"offsets-{self._chunk_index}.dat",
+        )
 
     def _register_offset(self, xyz: np.ndarray) -> int:
         key = (int(xyz[0]), int(xyz[1]), int(xyz[2]))
@@ -321,7 +308,7 @@ class PoseStreamAccumulator:
         if len(translations) == 0:
             return True
 
-        if self._pose_count + len(translations) > 2**32:
+        if self._pose_count + len(translations) > self._max_poses_per_chunk:
             return False
 
         translations_c = np.ascontiguousarray(translations, dtype=np.int16)
@@ -411,12 +398,8 @@ class PoseStreamAccumulator:
             self._new_tempfile()
             return
 
-        if self._chunk_index > 0:
-            self._ensure_multi()
-
         poses_path, offsets_path = self._current_paths()
-        poses_path.parent.mkdir(parents=True, exist_ok=True)
-        offsets_path.parent.mkdir(parents=True, exist_ok=True)
+        self._outdir.mkdir(parents=True, exist_ok=True)
 
         poses_mmap = np.lib.format.open_memmap(
             poses_path,
@@ -456,9 +439,8 @@ class PoseStreamAccumulator:
 
     def finish(self) -> list[tuple[Path, Path]]:
         if self.total_poses == 0:
-            poses_path, offsets_path = self._base_poses_path, self._base_offsets_path
-            poses_path.parent.mkdir(parents=True, exist_ok=True)
-            offsets_path.parent.mkdir(parents=True, exist_ok=True)
+            poses_path, offsets_path = self._current_paths()
+            self._outdir.mkdir(parents=True, exist_ok=True)
             np.save(poses_path, np.empty((0, 3), dtype=np.uint16))
             _write_offsets_file(
                 offsets_path,
@@ -469,8 +451,6 @@ class PoseStreamAccumulator:
             return [(poses_path, offsets_path)]
 
         self._flush_current()
-        if len(self._written_chunks) > 1:
-            self._ensure_multi()
         self.cleanup()
         return self._written_chunks
 
@@ -569,23 +549,15 @@ def write_pose_files(
     outdir: str | Path, packed: list[tuple[np.ndarray, np.ndarray, np.ndarray]]
 ) -> list[tuple[Path, Path]]:
     """
-    Write poses.npy and offsets.dat files to disk.
-
-    If packed has a single entry, files are named poses.npy and offsets.dat.
-    If multiple entries, files are named poses-{i}.npy and offsets-{i}.dat.
+    Write poses-*.npy and offsets-*.dat files to disk (1-based indices).
     """
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
 
     written: list[tuple[Path, Path]] = []
-    multi = len(packed) > 1
-    for i, (poses, mean_offset, offsets) in enumerate(packed):
-        if multi:
-            poses_path = outdir / f"poses-{i}.npy"
-            offsets_path = outdir / f"offsets-{i}.dat"
-        else:
-            poses_path = outdir / "poses.npy"
-            offsets_path = outdir / "offsets.dat"
+    for i, (poses, mean_offset, offsets) in enumerate(packed, start=1):
+        poses_path = outdir / f"poses-{i}.npy"
+        offsets_path = outdir / f"offsets-{i}.dat"
 
         np.save(poses_path, np.asarray(poses, dtype=np.uint16))
         _write_offsets_file(offsets_path, mean_offset, offsets)
@@ -594,31 +566,69 @@ def write_pose_files(
     return written
 
 
+def _pose_index_from_name(name: str) -> int | None:
+    if name.endswith(".npy.zst"):
+        base = name[:-4]
+    elif name.endswith(".npy"):
+        base = name
+    else:
+        return None
+    if not base.startswith("poses-") or not base.endswith(".npy"):
+        return None
+    index_text = base[len("poses-") : -4]
+    if not index_text.isdigit():
+        return None
+    return int(index_text)
+
+
+def _load_pose_array(path: Path) -> np.ndarray:
+    if path.name.endswith(".npy.zst"):
+        try:
+            import zstandard as zstd
+        except ImportError as exc:
+            raise ImportError("zstandard is required to read .npy.zst pose files") from exc
+        with tempfile.NamedTemporaryFile(prefix="poses_zst_", suffix=".npy") as tmp:
+            with path.open("rb") as compressed:
+                dctx = zstd.ZstdDecompressor()
+                with dctx.stream_reader(compressed) as reader:
+                    shutil.copyfileobj(reader, tmp)
+            tmp.flush()
+            tmp.seek(0)
+            return np.load(tmp)
+    return np.load(path, mmap_mode="r")
+
+
 def read_pose_files(outdir: str | Path) -> list[tuple[np.ndarray, np.ndarray, np.ndarray]]:
     """
-    Read poses.npy and offsets.dat files from disk.
+    Read poses-*.npy (or poses-*.npy.zst) and offsets-*.dat files from a directory.
     Returns a list of (poses, mean_offset, offsets) tuples.
     """
     outdir = Path(outdir)
-    single_pose = outdir / "poses.npy"
-    single_offsets = outdir / "offsets.dat"
+    if not outdir.exists() or not outdir.is_dir():
+        raise FileNotFoundError(f"Pose directory not found: {outdir}")
 
-    if single_pose.exists():
-        poses = np.load(single_pose)
-        mean_offset, offsets = _read_offsets_file(single_offsets)
-        return [(poses, mean_offset, offsets)]
-
-    pose_files = sorted(outdir.glob("poses-*.npy"))
+    pose_files = list(outdir.glob("poses-*.npy")) + list(outdir.glob("poses-*.npy.zst"))
     if not pose_files:
-        raise FileNotFoundError("No poses.npy or poses-*.npy found")
+        raise FileNotFoundError("No poses-*.npy or poses-*.npy.zst found")
+
+    indexed: dict[int, Path] = {}
+    for pose_path in pose_files:
+        index = _pose_index_from_name(pose_path.name)
+        if index is None:
+            continue
+        if index not in indexed or indexed[index].name.endswith(".npy.zst"):
+            indexed[index] = pose_path
+
+    if not indexed:
+        raise FileNotFoundError("No valid poses-*.npy or poses-*.npy.zst files found")
 
     results: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
-    for pose_path in pose_files:
-        suffix = pose_path.stem.split("poses-")[-1]
-        offsets_path = outdir / f"offsets-{suffix}.dat"
+    for index in sorted(indexed):
+        pose_path = indexed[index]
+        offsets_path = outdir / f"offsets-{index}.dat"
         if not offsets_path.exists():
             raise FileNotFoundError(f"Missing offsets file for {pose_path.name}")
-        poses = np.load(pose_path)
+        poses = _load_pose_array(pose_path)
         mean_offset, offsets = _read_offsets_file(offsets_path)
         results.append((poses, mean_offset, offsets))
 
