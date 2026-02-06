@@ -1,4 +1,7 @@
 .vscode
 *.pyc
 crocodile-OLD
-WIP/
+tests/1b7f/frag3-?wd/offsets-[2-9]*
+tests/1b7f/frag3-?wd/offsets-1[0-9]*
+tests/1b7f/frag3-?wd/poses-[2-9]*
+tests/1b7f/frag3-?wd/poses-1[0-9]*
