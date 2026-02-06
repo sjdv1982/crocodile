@@ -1,6 +1,5 @@
-from contextlib import contextmanager
+import io
 from pathlib import Path
-import shutil
 import tempfile
 
 import numpy as np
@@ -614,59 +613,28 @@ def discover_pose_pairs(directory: str | Path) -> list[tuple[Path, Path]]:
     return pairs
 
 
-@contextmanager
-def open_pose_array(path: Path):
+def open_pose_array(path: str | Path) -> np.ndarray:
+    path = Path(path)
     if path.name.endswith(".npy.zst"):
         try:
             import zstandard as zstd
         except ImportError as exc:
             raise ImportError("zstandard is required to read .npy.zst pose files") from exc
-        tmp = tempfile.NamedTemporaryFile(prefix="poses_zst_", suffix=".npy", delete=False)
-        tmp_path = Path(tmp.name)
-        try:
-            with path.open("rb") as compressed:
-                dctx = zstd.ZstdDecompressor()
-                with dctx.stream_reader(compressed) as reader:
-                    shutil.copyfileobj(reader, tmp)
-            tmp.flush()
-            tmp.close()
-            arr = np.load(tmp_path, mmap_mode="r")
-            try:
-                yield arr
-            finally:
-                del arr
-        finally:
-            try:
-                tmp_path.unlink()
-            except FileNotFoundError:
-                pass
-        return
+        with path.open("rb") as compressed:
+            dctx = zstd.ZstdDecompressor()
+            with dctx.stream_reader(compressed) as reader:
+                decompressed = reader.read()
+        return np.load(io.BytesIO(decompressed))
 
-    arr = np.load(path, mmap_mode="r")
-    try:
-        yield arr
-    finally:
-        del arr
-
-
-def _load_pose_array(path: Path) -> np.ndarray:
-    if path.name.endswith(".npy.zst"):
-        try:
-            import zstandard as zstd
-        except ImportError as exc:
-            raise ImportError("zstandard is required to read .npy.zst pose files") from exc
-        with tempfile.NamedTemporaryFile(prefix="poses_zst_", suffix=".npy") as tmp:
-            with path.open("rb") as compressed:
-                dctx = zstd.ZstdDecompressor()
-                with dctx.stream_reader(compressed) as reader:
-                    shutil.copyfileobj(reader, tmp)
-            tmp.flush()
-            tmp.seek(0)
-            return np.load(tmp)
     return np.load(path, mmap_mode="r")
 
 
-def load_offset_table(path: Path) -> np.ndarray:
+def _load_pose_array(path: str | Path) -> np.ndarray:
+    return open_pose_array(path)
+
+
+def load_offset_table(path: str | Path) -> np.ndarray:
+    path = Path(path)
     mean_offset, offsets_uint8 = _read_offsets_file(path)
     offsets_int8 = offsets_uint8.view(np.int8)
     return offsets_int8.astype(np.int16) + mean_offset.astype(np.int16)
