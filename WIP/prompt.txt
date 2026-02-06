@@ -1,0 +1,16 @@
+Can you write a script that takes one poses.npy and offsets.dat and uses poses.py to decode them.
+Then, extract the rotamers (using library.py) and writes it out as a 4x4 matrix.
+
+****
+
+I would like you to add a `.reduce()` method to the Library class. Essentially, "reduce" is the averaging
+of atoms in the (X, Y, 3) .coordinates array, returning a reduced coordinate array (X, Q, 3), 
+where each Q index comes from one or more Y indices.
+The atoms to average are defined in "reduce.dat". 
+In that file, for each residue, the atoms to average are defined: first a line with a residue identifier,
+then the list of atom names to average. Each list is prepended by a atom type: lists with atom type 99 can be ignored.
+
+Residue identifiers starting with "R" are the ones of interest.
+"residue identifier" is compatible with "resid" in the template files (`fraglib/templates/*-ppdb.npy`), 
+except that the leading "R" must be subtracted: RU => U, RA => A.
+"atom name" is fully compatible with "name" in the template files.
