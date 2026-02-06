@@ -3,6 +3,7 @@ import hashlib
 import itertools
 import os
 import re
+from functools import lru_cache
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, TypeAlias, cast
@@ -13,6 +14,102 @@ from rna_pdb import ppdb2nucseq
 from mutate import mutate
 
 Coordinates: TypeAlias = np.ndarray
+ReductionMap: TypeAlias = dict[str, list[tuple[str, ...]]]
+
+
+@lru_cache(maxsize=None)
+def _load_reduction_map(reduce_file: str) -> ReductionMap:
+    mapping: ReductionMap = {}
+    current_residue: Optional[str] = None
+    with open(reduce_file) as handle:
+        lines = handle.readlines()
+
+    for lineno, raw in enumerate(lines, start=1):
+        line = raw.split("#", maxsplit=1)[0].strip()
+        if not line:
+            continue
+        fields = line.split()
+        if len(fields) == 1:
+            current_residue = fields[0]
+            continue
+        if current_residue is None:
+            raise ValueError(f"Malformed reduce file {reduce_file}:{lineno}: {raw.strip()}")
+        if not current_residue.startswith("R"):
+            continue
+        try:
+            atom_type = int(fields[0])
+        except ValueError as exc:
+            raise ValueError(
+                f"Malformed atom type in {reduce_file}:{lineno}: {fields[0]}"
+            ) from exc
+        if atom_type == 99:
+            continue
+        if len(fields) < 3:
+            raise ValueError(f"Malformed reduce file {reduce_file}:{lineno}: {raw.strip()}")
+        atom_names = list(fields[2:])
+        try:
+            float(atom_names[-1])
+        except ValueError:
+            pass
+        else:
+            atom_names = atom_names[:-1]
+        if not atom_names:
+            raise ValueError(
+                f"Reduction bead without atoms in {reduce_file}:{lineno}: {raw.strip()}"
+            )
+        residue_name = current_residue[1:]
+        mapping.setdefault(residue_name, []).append(tuple(atom_names))
+    return mapping
+
+
+def _build_reduction_plan(
+    template: np.ndarray, reduction_map: ReductionMap
+) -> list[np.ndarray]:
+    if template.dtype.names is None:
+        raise TypeError("Template must be a structured array")
+    for field in ("resid", "resname", "name"):
+        if field not in template.dtype.names:
+            raise TypeError(f"Template is missing required field '{field}'")
+
+    if len(template) == 0:
+        return []
+
+    residue_ids = template["resid"]
+    residue_names = np.char.strip(template["resname"].astype("U"))
+    atom_names = np.char.strip(template["name"].astype("U"))
+
+    boundaries = np.nonzero(residue_ids[1:] != residue_ids[:-1])[0] + 1
+    starts = np.concatenate((np.array([0], dtype=int), boundaries))
+    ends = np.concatenate((boundaries, np.array([len(template)], dtype=int)))
+
+    plan: list[np.ndarray] = []
+    for start, end in zip(starts, ends):
+        residue_name = residue_names[start]
+        residue_id = int(residue_ids[start])
+        groups = reduction_map.get(residue_name)
+        if groups is None:
+            raise ValueError(
+                f"No reduction definition for residue '{residue_name}' (resid {residue_id})"
+            )
+
+        atom_lookup: dict[str, int] = {}
+        for atom_index in range(start, end):
+            atom_name = atom_names[atom_index]
+            if atom_name in atom_lookup:
+                raise ValueError(
+                    f"Duplicate atom name '{atom_name}' in residue '{residue_name}' (resid {residue_id})"
+                )
+            atom_lookup[atom_name] = atom_index
+
+        for atom_group in groups:
+            missing = [name for name in atom_group if name not in atom_lookup]
+            if missing:
+                missing_list = ", ".join(missing)
+                raise ValueError(
+                    f"Missing atom(s) {missing_list} for residue '{residue_name}' (resid {residue_id})"
+                )
+            plan.append(np.array([atom_lookup[name] for name in atom_group], dtype=np.intp))
+    return plan
 
 
 @dataclass(frozen=True)
@@ -34,6 +131,9 @@ class Library:
 
     sequence: str
         Nucleotide sequence
+
+    template: np.ndarray
+        Parsed PDB template (same atom order/selection as coordinates axis 1)
 
     atom_mask: Optional[np.ndarray]
         Optional mask that indicates which atoms were selected by residue selection
@@ -61,6 +161,7 @@ class Library:
     coordinates: np.ndarray
     nprimary: int
     sequence: str
+    template: np.ndarray
     atom_mask: Optional[np.ndarray]
     conformer_mask: Optional[np.ndarray]
     conformer_mapping: Optional[np.ndarray]
@@ -83,6 +184,26 @@ class Library:
         else:
             first = self.rotaconformers_index[conformer - 1]
         return self.rotaconformers[first:last]
+
+    def reduce(self, reduce_file: str | Path | None = None) -> np.ndarray:
+        """Reduce atomic coordinates to bead coordinates defined in reduce.dat."""
+        if self.coordinates.ndim != 3 or self.coordinates.shape[2] != 3:
+            raise ValueError("coordinates must have shape (X, Y, 3)")
+        if len(self.template) != self.coordinates.shape[1]:
+            raise ValueError("Template and coordinates atom count mismatch")
+        if reduce_file is None:
+            reduce_path = Path(__file__).with_name("reduce.dat")
+        else:
+            reduce_path = Path(reduce_file)
+        reduction_map = _load_reduction_map(str(reduce_path.resolve()))
+        plan = _build_reduction_plan(self.template, reduction_map)
+
+        reduced = np.empty(
+            (self.coordinates.shape[0], len(plan), 3), dtype=self.coordinates.dtype
+        )
+        for bead_index, atom_indices in enumerate(plan):
+            reduced[:, bead_index] = self.coordinates[:, atom_indices].mean(axis=1)
+        return reduced
 
     def _validate(self) -> None:
         if self.conformer_mask is not None:
@@ -350,6 +471,7 @@ class LibraryFactory:
         else:
             coordinates = primary_coordinates
 
+        template = self.template
         atom_mask = None
         if only_base or nucleotide_mask is not None:
             atom_mask = np.ones(len(self.template), bool)
@@ -368,6 +490,7 @@ class LibraryFactory:
                 )
                 atom_mask &= base
             coordinates = coordinates[:, atom_mask]
+            template = template[atom_mask]
 
         rotaconformers = None
         rotaconformers_index = None
@@ -379,6 +502,7 @@ class LibraryFactory:
             sequence=self.sequence,
             coordinates=coordinates,
             nprimary=self.nprimary,
+            template=template,
             atom_mask=atom_mask,
             conformer_mask=conformer_mask,
             conformer_mapping=conformer_mapping,
