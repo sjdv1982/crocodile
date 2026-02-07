@@ -14,6 +14,7 @@ struct CliConfig
     threshold_m::Int
     max_poses_per_chunk::Int
     dedup_buckets::Int
+    keep_temp::Bool
 end
 
 struct PairInfo
@@ -81,6 +82,14 @@ struct MapRecord
     uniq_idx::UInt32
 end
 
+struct KeyRecord
+    conf::UInt16
+    rot::UInt16
+    x::Int16
+    y::Int16
+    z::Int16
+end
+
 struct HeapNode
     old_idx::UInt32
     uniq_idx::UInt32
@@ -138,6 +147,7 @@ function usage()
           --threshold-m <int>         Reserve threshold for active pool (default: 200000)
           --max-poses-per-chunk <int> Maximum poses per output poses-*.npy chunk (default: 4294967295)
           --dedup-buckets <int>       Power-of-two bucket count for K uniqueness (default: 256)
+          --keep-temp                 Keep temporary files under <output>/_tmp for inspection
           -h, --help                  Show help
         """
     )
@@ -161,30 +171,38 @@ function parse_args(argv::Vector{String})::CliConfig
     threshold_m = 200_000
     max_poses_per_chunk = Int(typemax(UInt32))
     dedup_buckets = 256
+    keep_temp = false
 
     i = 4
     while i <= length(argv)
         arg = argv[i]
         if arg == "--threshold-k"
-            i += 1
-            i > length(argv) && error("--threshold-k requires a value")
-            threshold_k = parse(Int, argv[i])
+            i + 1 <= length(argv) || error("--threshold-k requires a value")
+            threshold_k = parse(Int, argv[i + 1])
+            i += 2
+            continue
         elseif arg == "--threshold-m"
-            i += 1
-            i > length(argv) && error("--threshold-m requires a value")
-            threshold_m = parse(Int, argv[i])
+            i + 1 <= length(argv) || error("--threshold-m requires a value")
+            threshold_m = parse(Int, argv[i + 1])
+            i += 2
+            continue
         elseif arg == "--max-poses-per-chunk"
-            i += 1
-            i > length(argv) && error("--max-poses-per-chunk requires a value")
-            max_poses_per_chunk = parse(Int, argv[i])
+            i + 1 <= length(argv) || error("--max-poses-per-chunk requires a value")
+            max_poses_per_chunk = parse(Int, argv[i + 1])
+            i += 2
+            continue
         elseif arg == "--dedup-buckets"
+            i + 1 <= length(argv) || error("--dedup-buckets requires a value")
+            dedup_buckets = parse(Int, argv[i + 1])
+            i += 2
+            continue
+        elseif arg == "--keep-temp"
+            keep_temp = true
             i += 1
-            i > length(argv) && error("--dedup-buckets requires a value")
-            dedup_buckets = parse(Int, argv[i])
+            continue
         else
             error("Unknown argument: $arg")
         end
-        i += 1
     end
 
     threshold_k > 0 || error("--threshold-k must be positive")
@@ -201,6 +219,7 @@ function parse_args(argv::Vector{String})::CliConfig
         threshold_m,
         max_poses_per_chunk,
         dedup_buckets,
+        keep_temp,
     )
 end
 
@@ -1194,6 +1213,192 @@ function reserve_push!(
     append_active!(ap, active)
 end
 
+function run_first_pass_to_key_buckets!(
+    a_pairs::Vector{PairInfo},
+    b_pairs::Vector{PairInfo},
+    bucket_dir::String,
+    cfg::CliConfig,
+)::UInt64
+    nb = cfg.dedup_buckets
+    mkpath(bucket_dir)
+    bucket_paths = [joinpath(bucket_dir, @sprintf("keybucket-%05d.bin", i)) for i in 0:(nb - 1)]
+    bucket_ios = [open(p, "w") for p in bucket_paths]
+
+    total_matches = UInt64(0)
+    reserve = Dict{Int, ActivePool}()
+    a_counter = UInt64(0)
+    try
+        for aa in a_pairs
+            aa_loaded = load_pair(aa)
+            active = init_active_pool()
+            add_new_aa_to_active!(active, aa_loaded, a_counter)
+
+            for (bb_i, bb) in enumerate(b_pairs)
+                if haskey(reserve, bb_i)
+                    append_active!(active, reserve[bb_i])
+                    delete!(reserve, bb_i)
+                end
+                active_length(active) == 0 && continue
+
+                bb_loaded = load_pair(bb)
+                b_lookup = make_blookup_first(bb_loaded)
+                matched = match_active_first_pass!(active, b_lookup)
+
+                n = length(matched.conf)
+                total_matches += UInt64(n)
+                @inbounds for i in 1:n
+                    bidx = key_bucket_id(
+                        matched.conf[i],
+                        matched.rot[i],
+                        matched.x[i],
+                        matched.y[i],
+                        matched.z[i],
+                        nb,
+                    )
+                    write_key_record(
+                        bucket_ios[bidx],
+                        KeyRecord(
+                            matched.conf[i],
+                            matched.rot[i],
+                            matched.x[i],
+                            matched.y[i],
+                            matched.z[i],
+                        ),
+                    )
+                end
+
+                # Note 1: do not reserve/break on the last BB pair.
+                if active_length(active) < cfg.threshold_m && bb_i < length(b_pairs)
+                    reserve_push!(reserve, bb_i, active)
+                    clear_active!(active)
+                    break
+                end
+            end
+
+            clear_active!(active)
+            a_counter += UInt64(length(aa_loaded.conf))
+        end
+    finally
+        for io in bucket_ios
+            close(io)
+        end
+    end
+
+    return total_matches
+end
+
+function dedup_key_buckets_to_unique_k!(
+    bucket_dir::String,
+    outdir::String,
+    cfg::CliConfig,
+)::UInt64
+    nb = cfg.dedup_buckets
+    unique_writer = init_pose_writer(
+        outdir;
+        start_index = 1,
+        max_poses_per_chunk = cfg.max_poses_per_chunk,
+        write_empty_if_none = true,
+    )
+
+    for b in 0:(nb - 1)
+        path = joinpath(bucket_dir, @sprintf("keybucket-%05d.bin", b))
+        isfile(path) || continue
+        sz = stat(path).size
+        sz == 0 && continue
+        sz % 10 == 0 || error("Corrupt key bucket file size: $path")
+        bytes = read(path)
+        n = Int(sz ÷ 10)
+        recs = Vector{KeyRecord}(undef, n)
+        p = 1
+        @inbounds for i in 1:n
+            recs[i] = read_key_record(bytes, p)
+            p += 10
+        end
+
+        sort!(recs, by = r -> (r.conf, r.rot, r.x, r.y, r.z))
+        i = 1
+        while i <= n
+            r0 = recs[i]
+            add_pose!(unique_writer, r0.conf, r0.rot, r0.x, r0.y, r0.z)
+            key = (r0.conf, r0.rot, r0.x, r0.y, r0.z)
+            i += 1
+            while i <= n && (recs[i].conf, recs[i].rot, recs[i].x, recs[i].y, recs[i].z) == key
+                i += 1
+            end
+        end
+        rm(path; force = true)
+    end
+    finish_pose_writer!(unique_writer)
+    return unique_writer.total_written
+end
+
+function run_index_pass!(
+    a_pairs::Vector{PairInfo},
+    b_pairs::Vector{PairInfo},
+    outdir::String,
+    cfg::CliConfig;
+    prefix::String,
+)
+    starts = Vector{UInt32}(undef, length(b_pairs))
+    cursor = UInt64(0)
+    for (i, p) in enumerate(b_pairs)
+        cursor <= UInt64(typemax(UInt32)) || error("Unique-K index exceeds uint32 range")
+        starts[i] = UInt32(cursor)
+        cursor += UInt64(pose_row_count(p.pose_path))
+    end
+    cursor <= UInt64(typemax(UInt32)) + UInt64(1) || error("Unique-K index exceeds uint32 range")
+
+    writer = init_index_writer(outdir, prefix; start_index = 1, ncols = 2, flush_rows = cfg.threshold_k)
+    buf_idx = UInt32[]
+    buf_uidx = UInt32[]
+    reserve = Dict{Int, ActivePool}()
+    a_counter = UInt64(0)
+
+    for aa in a_pairs
+        aa_loaded = load_pair(aa)
+        active = init_active_pool()
+        add_new_aa_to_active!(active, aa_loaded, a_counter)
+
+        for (bb_i, bb) in enumerate(b_pairs)
+            if haskey(reserve, bb_i)
+                append_active!(active, reserve[bb_i])
+                delete!(reserve, bb_i)
+            end
+            active_length(active) == 0 && continue
+
+            bb_loaded = load_pair(bb)
+            b_lookup = make_blookup_second(bb_loaded, starts[bb_i])
+            matched = match_active_second_pass!(active, b_lookup)
+
+            if !isempty(matched.aidx)
+                append!(buf_idx, matched.aidx)
+                append!(buf_uidx, matched.uniq_idx)
+            end
+
+            if length(buf_idx) >= cfg.threshold_k
+                add_index2!(writer, buf_idx, buf_uidx)
+                empty!(buf_idx)
+                empty!(buf_uidx)
+            end
+
+            # Note 1: do not reserve/break on the last BB pair.
+            if active_length(active) < cfg.threshold_m && bb_i < length(b_pairs)
+                reserve_push!(reserve, bb_i, active)
+                clear_active!(active)
+                break
+            end
+        end
+
+        clear_active!(active)
+        a_counter += UInt64(length(aa_loaded.conf))
+    end
+
+    if !isempty(buf_idx)
+        add_index2!(writer, buf_idx, buf_uidx)
+    end
+    finish_index_writer!(writer)
+end
+
 function run_first_pass!(
     a_pairs::Vector{PairInfo},
     b_pairs::Vector{PairInfo},
@@ -1302,6 +1507,34 @@ function write_bucket_record(io::IO, r::BucketRecord)
     write_le_u16(io, i16_to_u16(r.y))
     write_le_u16(io, i16_to_u16(r.z))
     write_le_u32(io, r.old_idx)
+end
+
+function write_key_record(io::IO, r::KeyRecord)
+    write_le_u16(io, r.conf)
+    write_le_u16(io, r.rot)
+    write_le_u16(io, i16_to_u16(r.x))
+    write_le_u16(io, i16_to_u16(r.y))
+    write_le_u16(io, i16_to_u16(r.z))
+end
+
+function read_key_record(bytes::Vector{UInt8}, pos::Int)::KeyRecord
+    conf = read_le_u16(bytes, pos)
+    rot = read_le_u16(bytes, pos + 2)
+    x = u16_to_i16(read_le_u16(bytes, pos + 4))
+    y = u16_to_i16(read_le_u16(bytes, pos + 6))
+    z = u16_to_i16(read_le_u16(bytes, pos + 8))
+    return KeyRecord(conf, rot, x, y, z)
+end
+
+@inline function key_bucket_id(
+    conf::UInt16,
+    rot::UInt16,
+    x::Int16,
+    y::Int16,
+    z::Int16,
+    nbuckets::Int,
+)::Int
+    return Int(key_hash(conf, rot, x, y, z) & UInt64(nbuckets - 1)) + 1
 end
 
 function read_bucket_record(bytes::Vector{UInt8}, pos::Int)::BucketRecord
@@ -1669,6 +1902,33 @@ function sum_pose_file_sizes(pairs::Vector{PairInfo})::Int64
     return s
 end
 
+function dir_size_bytes(path::String)::UInt64
+    isdir(path) || return UInt64(0)
+    total = UInt64(0)
+    for (root, _, files) in walkdir(path)
+        for f in files
+            fp = joinpath(root, f)
+            try
+                total += UInt64(stat(fp).size)
+            catch
+                # Ignore files that disappear during cleanup.
+            end
+        end
+    end
+    return total
+end
+
+function fmt_bytes(n::UInt64)::String
+    units = ["B", "KB", "MB", "GB", "TB", "PB"]
+    v = Float64(n)
+    i = 1
+    while v >= 1024.0 && i < length(units)
+        v /= 1024.0
+        i += 1
+    end
+    return @sprintf("%.2f %s", v, units[i])
+end
+
 function main(argv::Vector{String})::Int
     cfg = parse_args(argv)
     isdir(cfg.set1) || error("Input directory not found: $(cfg.set1)")
@@ -1689,32 +1949,34 @@ function main(argv::Vector{String})::Int
     mkpath(cfg.output)
     tmp_root = joinpath(cfg.output, "_tmp")
     mkpath(tmp_root)
-    raw_k_dir = joinpath(tmp_root, "k-raw")
-    raw_ind_a_dir = joinpath(tmp_root, "ind-a-raw")
-    mkpath(raw_k_dir)
-    mkpath(raw_ind_a_dir)
+    key_bucket_dir = joinpath(tmp_root, "key-buckets")
+    mkpath(key_bucket_dir)
 
     println("A (largest): $large_name")
     println("B (smallest): $small_name")
     println("threads: $(nthreads())")
 
-    first_pass = run_first_pass!(large_pairs, small_pairs, raw_k_dir, raw_ind_a_dir, cfg)
-    println("first-pass K rows: $(first_pass.k_count)")
+    first_pass_count = run_first_pass_to_key_buckets!(large_pairs, small_pairs, key_bucket_dir, cfg)
+    println("first-pass K rows: $first_pass_count")
+    println("tmp size after first pass: $(fmt_bytes(dir_size_bytes(tmp_root)))")
 
-    unique_k_count = dedup_k_and_rewrite_ind_a!(
-        raw_k_dir,
-        raw_ind_a_dir,
-        cfg.output,
-        cfg,
-        first_pass.pending,
-    )
+    unique_k_count = dedup_key_buckets_to_unique_k!(key_bucket_dir, cfg.output, cfg)
     println("unique-K rows: $unique_k_count")
+    println("tmp size after dedup: $(fmt_bytes(dir_size_bytes(tmp_root)))")
 
     unique_k_pairs = discover_pose_pairs(cfg.output)
-    run_second_pass!(small_pairs, unique_k_pairs, cfg.output, cfg)
+    run_index_pass!(large_pairs, unique_k_pairs, cfg.output, cfg; prefix = "ind-A")
+    println("tmp size after ind-A: $(fmt_bytes(dir_size_bytes(tmp_root)))")
+    run_index_pass!(small_pairs, unique_k_pairs, cfg.output, cfg; prefix = "ind-B")
+    println("tmp size after ind-B: $(fmt_bytes(dir_size_bytes(tmp_root)))")
     println("done")
+    println("output size: $(fmt_bytes(dir_size_bytes(cfg.output)))")
 
-    rm(tmp_root; recursive = true, force = true)
+    if cfg.keep_temp
+        println("kept temp directory: $tmp_root")
+    else
+        rm(tmp_root; recursive = true, force = true)
+    end
     return 0
 end
 
