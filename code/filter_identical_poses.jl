@@ -15,6 +15,7 @@ struct CliConfig
     max_poses_per_chunk::Int
     dedup_buckets::Int
     keep_temp::Bool
+    reuse_unique_k_dir::Union{Nothing, String}
 end
 
 struct PairInfo
@@ -96,6 +97,22 @@ struct HeapNode
     src::Int
 end
 
+struct PairWithStart
+    pair::PairInfo
+end
+
+struct KeyIdxRecord
+    key::UInt64
+    idx::UInt32
+end
+
+mutable struct CanonicalSetIndex
+    pairs_by_center::Dict{NTuple{3, Int16}, Vector{PairWithStart}}
+    bucket_by_center::Dict{NTuple{3, Int16}, Vector{String}}
+    total_poses::UInt64
+    temp_bytes::UInt64
+end
+
 mutable struct PoseFileWriter
     outdir::String
     next_index::Int
@@ -120,6 +137,16 @@ mutable struct IndexFileWriter
     total_rows::UInt64
     col1::Vector{UInt32}
     col2::Vector{UInt32}
+end
+
+mutable struct Index64FileWriter
+    outdir::String
+    prefix::String
+    next_index::Int
+    flush_rows::Int
+    total_rows::UInt64
+    col1::Vector{UInt64}
+    col2::Vector{UInt64}
 end
 
 struct PendingRawK
@@ -148,6 +175,7 @@ function usage()
           --max-poses-per-chunk <int> Maximum poses per output poses-*.npy chunk (default: 4294967295)
           --dedup-buckets <int>       Power-of-two bucket count for K uniqueness (default: 256)
           --keep-temp                 Keep temporary files under <output>/_tmp for inspection
+          --reuse-unique-k-dir <dir>  Skip prefilter/canonicalization/unique-k and reuse existing unique-K poses
           -h, --help                  Show help
         """
     )
@@ -172,6 +200,7 @@ function parse_args(argv::Vector{String})::CliConfig
     max_poses_per_chunk = Int(typemax(UInt32))
     dedup_buckets = 256
     keep_temp = false
+    reuse_unique_k_dir = nothing
 
     i = 4
     while i <= length(argv)
@@ -200,6 +229,11 @@ function parse_args(argv::Vector{String})::CliConfig
             keep_temp = true
             i += 1
             continue
+        elseif arg == "--reuse-unique-k-dir"
+            i + 1 <= length(argv) || error("--reuse-unique-k-dir requires a value")
+            reuse_unique_k_dir = argv[i + 1]
+            i += 2
+            continue
         else
             error("Unknown argument: $arg")
         end
@@ -220,6 +254,7 @@ function parse_args(argv::Vector{String})::CliConfig
         max_poses_per_chunk,
         dedup_buckets,
         keep_temp,
+        reuse_unique_k_dir,
     )
 end
 
@@ -236,6 +271,19 @@ function read_le_u32(bytes::Vector{UInt8}, pos::Int)::UInt32
     )
 end
 
+function read_le_u64(bytes::Vector{UInt8}, pos::Int)::UInt64
+    return (
+        UInt64(bytes[pos]) |
+        (UInt64(bytes[pos + 1]) << 8) |
+        (UInt64(bytes[pos + 2]) << 16) |
+        (UInt64(bytes[pos + 3]) << 24) |
+        (UInt64(bytes[pos + 4]) << 32) |
+        (UInt64(bytes[pos + 5]) << 40) |
+        (UInt64(bytes[pos + 6]) << 48) |
+        (UInt64(bytes[pos + 7]) << 56)
+    )
+end
+
 function write_le_u16(io::IO, x::UInt16)
     write(io, UInt8(x & 0x00ff))
     write(io, UInt8((x >> 8) & 0x00ff))
@@ -246,6 +294,37 @@ function write_le_u32(io::IO, x::UInt32)
     write(io, UInt8((x >> 8) & 0x000000ff))
     write(io, UInt8((x >> 16) & 0x000000ff))
     write(io, UInt8((x >> 24) & 0x000000ff))
+end
+
+function write_le_u64(io::IO, x::UInt64)
+    write(io, UInt8(x & 0x00000000000000ff))
+    write(io, UInt8((x >> 8) & 0x00000000000000ff))
+    write(io, UInt8((x >> 16) & 0x00000000000000ff))
+    write(io, UInt8((x >> 24) & 0x00000000000000ff))
+    write(io, UInt8((x >> 32) & 0x00000000000000ff))
+    write(io, UInt8((x >> 40) & 0x00000000000000ff))
+    write(io, UInt8((x >> 48) & 0x00000000000000ff))
+    write(io, UInt8((x >> 56) & 0x00000000000000ff))
+end
+
+@inline function write_u16_vector_le(io::IO, data::Vector{UInt16})
+    if ENDIAN_BOM == 0x04030201
+        write(io, reinterpret(UInt8, data))
+    else
+        @inbounds for v in data
+            write_le_u16(io, v)
+        end
+    end
+end
+
+@inline function write_u64_vector_le(io::IO, data::Vector{UInt64})
+    if ENDIAN_BOM == 0x04030201
+        write(io, reinterpret(UInt8, data))
+    else
+        @inbounds for v in data
+            write_le_u64(io, v)
+        end
+    end
 end
 
 function u8_to_i8(x::UInt8)::Int8
@@ -276,12 +355,63 @@ end
     return UInt64(conf) | (UInt64(rot) << 16) | (UInt64(offidx) << 32)
 end
 
+@inline function pack_rel_pose_key(
+    conf::UInt16,
+    rot::UInt16,
+    rx::Int8,
+    ry::Int8,
+    rz::Int8,
+)::UInt64
+    return (
+        UInt64(conf) |
+        (UInt64(rot) << 16) |
+        (UInt64(reinterpret(UInt8, rx)) << 32) |
+        (UInt64(reinterpret(UInt8, ry)) << 40) |
+        (UInt64(reinterpret(UInt8, rz)) << 48)
+    )
+end
+
+@inline function pack_rel_suffix(rx::Int8, ry::Int8, rz::Int8)::UInt64
+    return (
+        (UInt64(reinterpret(UInt8, rx)) << 32) |
+        (UInt64(reinterpret(UInt8, ry)) << 40) |
+        (UInt64(reinterpret(UInt8, rz)) << 48)
+    )
+end
+
+@inline function unpack_rel_pose_key(key::UInt64)
+    conf = UInt16(key & 0x0000_0000_0000_ffff)
+    rot = UInt16((key >> 16) & 0x0000_0000_0000_ffff)
+    rx = reinterpret(Int8, UInt8((key >> 32) & 0x0000_0000_0000_00ff))
+    ry = reinterpret(Int8, UInt8((key >> 40) & 0x0000_0000_0000_00ff))
+    rz = reinterpret(Int8, UInt8((key >> 48) & 0x0000_0000_0000_00ff))
+    return conf, rot, rx, ry, rz
+end
+
+@inline function is_center_canonical(c::NTuple{3, Int16})::Bool
+    return mod(Int32(c[1]), 256) == 0 && mod(Int32(c[2]), 256) == 0 && mod(Int32(c[3]), 256) == 0
+end
+
+@inline function canonical_center_coord(v::Int16)::Int16
+    c32 = fld(Int32(v) + 128, 256) * 256
+    (c32 >= typemin(Int16) && c32 <= typemax(Int16)) || error("Canonical center out of int16 range for coordinate $v")
+    return Int16(c32)
+end
+
+@inline function canonical_center(x::Int16, y::Int16, z::Int16)::NTuple{3, Int16}
+    return (canonical_center_coord(x), canonical_center_coord(y), canonical_center_coord(z))
+end
+
 function dtype_descr(::Type{UInt16})::String
     return "<u2"
 end
 
 function dtype_descr(::Type{UInt32})::String
     return "<u4"
+end
+
+function dtype_descr(::Type{UInt64})::String
+    return "<u8"
 end
 
 function dtype_descr(::Type{Int16})::String
@@ -497,6 +627,27 @@ function write_npy_u32(path::String, arr::AbstractArray{UInt32})
     end
 end
 
+function write_npy_u64(path::String, arr::AbstractArray{UInt64})
+    open(path, "w") do io
+        if ndims(arr) == 1
+            write_npy_header(io, dtype_descr(UInt64), [length(arr)])
+            @inbounds for v in arr
+                write_le_u64(io, v)
+            end
+        elseif ndims(arr) == 2
+            nrows, ncols = size(arr)
+            write_npy_header(io, dtype_descr(UInt64), [nrows, ncols])
+            @inbounds for i in 1:nrows
+                for j in 1:ncols
+                    write_le_u64(io, arr[i, j])
+                end
+            end
+        else
+            error("write_npy_u64 supports only rank-1 or rank-2 arrays")
+        end
+    end
+end
+
 function write_npy_u16_3cols(
     path::String,
     col1::Vector{UInt16},
@@ -515,8 +666,41 @@ function write_npy_u16_3cols(
     end
     open(path, "w") do io
         write_npy_header(io, dtype_descr(UInt16), [n, 3])
-        @inbounds for v in raw
-            write_le_u16(io, v)
+        write_u16_vector_le(io, raw)
+    end
+end
+
+function write_npy_u16_3cols_zst(
+    path::String,
+    col1::Vector{UInt16},
+    col2::Vector{UInt16},
+    col3::Vector{UInt16},
+)
+    n = length(col1)
+    length(col2) == n || error("Column length mismatch")
+    length(col3) == n || error("Column length mismatch")
+    raw = Vector{UInt16}(undef, n * 3)
+    @inbounds for i in 1:n
+        j = 3 * (i - 1)
+        raw[j + 1] = col1[i]
+        raw[j + 2] = col2[i]
+        raw[j + 3] = col3[i]
+    end
+
+    zstd_threads = zstd_thread_count()
+    cmd = zstd_threads == 0 ?
+          `zstd -q -f -T0 -o $path --` :
+          `zstd -q -f -T$(zstd_threads) -o $path --`
+    try
+        open(cmd, "w") do io
+            write_npy_header(io, dtype_descr(UInt16), [n, 3])
+            write_u16_vector_le(io, raw)
+        end
+    catch
+        # Fallback for zstd builds/options that reject -T on this path.
+        open(`zstd -q -f -o $path --`, "w") do io
+            write_npy_header(io, dtype_descr(UInt16), [n, 3])
+            write_u16_vector_le(io, raw)
         end
     end
 end
@@ -548,13 +732,51 @@ function write_npy_u32_2cols(path::String, col1::Vector{UInt32}, col2::Vector{UI
     end
 end
 
-function decompress_npy_zst(path::String)::Vector{UInt8}
-    cmd = `zstd -dc -- $path`
+function write_npy_u64_2cols(path::String, col1::Vector{UInt64}, col2::Vector{UInt64})
+    n = length(col1)
+    length(col2) == n || error("Column length mismatch")
+    raw = Vector{UInt64}(undef, n * 2)
+    @inbounds for i in 1:n
+        j = 2 * (i - 1)
+        raw[j + 1] = col1[i]
+        raw[j + 2] = col2[i]
+    end
+    open(path, "w") do io
+        write_npy_header(io, dtype_descr(UInt64), [n, 2])
+        @inbounds for v in raw
+            write_le_u64(io, v)
+        end
+    end
+end
+
+function zstd_thread_count()::Int
+    zstd_threads = try
+        parse(Int, get(ENV, "CROCODILE_ZSTD_THREADS", "0"))
+    catch
+        0
+    end
+    return max(0, zstd_threads)
+end
+
+function decompress_zst_bytes(path::String; single_thread::Bool = false)::Vector{UInt8}
+    zstd_threads = single_thread ? 1 : zstd_thread_count()
+    cmd = zstd_threads == 0 ?
+          `zstd -dc -T0 --force -- $path` :
+          `zstd -dc -T$(zstd_threads) --force -- $path`
     try
         return read(cmd)
     catch err
-        error("Failed to read $path with zstd -dc: $err")
+        # Fallback for zstd builds/options that reject -T on this path.
+        try
+            return read(`zstd -dc --force -- $path`)
+        catch err2
+            error("Failed to read $path with zstd -dc: $err2 (threaded attempt: $err)")
+        end
     end
+end
+
+function decompress_npy_zst(path::String)::Vector{UInt8}
+    return decompress_zst_bytes(path)
 end
 
 function read_pose_columns_bytes(bytes::Vector{UInt8}, src::String)
@@ -591,6 +813,29 @@ function read_pose_columns(path::String)
     return read_pose_columns_bytes(bytes, path)
 end
 
+function pose_row_count_zst(path::String)::Int
+    descr, fortran, shape = try
+        zstd_threads = zstd_thread_count()
+        cmd = zstd_threads == 0 ?
+              `zstd -dc -T0 --force -- $path` :
+              `zstd -dc -T$(zstd_threads) --force -- $path`
+        open(cmd, "r") do io
+            parse_npy_header_io(io)
+        end
+    catch
+        # Some zstd/Julia combinations can surface EPIPE when the stream is
+        # closed early after reading only the header. Fall back to full decode.
+        bytes = decompress_npy_zst(path)
+        d, f, s, _ = parse_npy_header(bytes)
+        (d, f, s)
+    end
+    (descr == "<u2" || descr == "|u2") || error("Expected uint16 .npy in $path, got $descr")
+    fortran && error("Fortran-order arrays are not supported in $path")
+    length(shape) == 2 || error("Expected 2D pose array in $path")
+    shape[2] == 3 || error("Expected pose shape [N,3] in $path")
+    return shape[1]
+end
+
 function pose_row_count(path::String)::Int
     if endswith(path, ".npy")
         open(path, "r") do io
@@ -601,6 +846,8 @@ function pose_row_count(path::String)::Int
             shape[2] == 3 || error("Expected pose shape [N,3] in $path")
             return shape[1]
         end
+    elseif endswith(path, ".npy.zst")
+        return pose_row_count_zst(path)
     end
     conf, _, _ = read_pose_columns(path)
     return length(conf)
@@ -682,6 +929,16 @@ function load_offsets_dat(path::String)
         p += 3
     end
     return (Int16(c1), Int16(c2), Int16(c3)), rel, abs
+end
+
+function read_offset_center(path::String)::NTuple{3, Int16}
+    bytes = read(path)
+    length(bytes) >= 6 || error("offset file too small: $path")
+    return (
+        u16_to_i16(read_le_u16(bytes, 1)),
+        u16_to_i16(read_le_u16(bytes, 3)),
+        u16_to_i16(read_le_u16(bytes, 5)),
+    )
 end
 
 function load_pair(pair::PairInfo)::LoadedPair
@@ -1041,10 +1298,10 @@ function flush_pose_writer!(w::PoseFileWriter)
         return
     end
 
-    pose_path = joinpath(w.outdir, "poses-$(w.next_index).npy")
+    pose_path = joinpath(w.outdir, "poses-$(w.next_index).npy.zst")
     offsets_path = joinpath(w.outdir, "offsets-$(w.next_index).dat")
 
-    write_npy_u16_3cols(pose_path, w.conf, w.rot, w.offidx)
+    write_npy_u16_3cols_zst(pose_path, w.conf, w.rot, w.offidx)
 
     noff = length(w.offsets)
     center = NTuple{3, Int16}((
@@ -1052,21 +1309,31 @@ function flush_pose_writer!(w::PoseFileWriter)
         Int16(clamp(Int((w.max_xyz::NTuple{3, Int32})[2] - 127), typemin(Int16), typemax(Int16))),
         Int16(clamp(Int((w.max_xyz::NTuple{3, Int32})[3] - 127), typemin(Int16), typemax(Int16))),
     ))
+    offset_bytes = Vector{UInt8}(undef, 6 + 3 * noff)
+    c1 = i16_to_u16(center[1])
+    c2 = i16_to_u16(center[2])
+    c3 = i16_to_u16(center[3])
+    offset_bytes[1] = UInt8(c1 & 0x00ff)
+    offset_bytes[2] = UInt8((c1 >> 8) & 0x00ff)
+    offset_bytes[3] = UInt8(c2 & 0x00ff)
+    offset_bytes[4] = UInt8((c2 >> 8) & 0x00ff)
+    offset_bytes[5] = UInt8(c3 & 0x00ff)
+    offset_bytes[6] = UInt8((c3 >> 8) & 0x00ff)
+    p = 7
+    @inbounds for i in 1:noff
+        ox, oy, oz = w.offsets[i]
+        dx = Int32(ox) - Int32(center[1])
+        dy = Int32(oy) - Int32(center[2])
+        dz = Int32(oz) - Int32(center[3])
+        (dx >= -128 && dx <= 127 && dy >= -128 && dy <= 127 && dz >= -128 && dz <= 127) ||
+            error("Offset cannot be encoded as int8 around center")
+        offset_bytes[p] = i8_to_u8(Int8(dx))
+        offset_bytes[p + 1] = i8_to_u8(Int8(dy))
+        offset_bytes[p + 2] = i8_to_u8(Int8(dz))
+        p += 3
+    end
     open(offsets_path, "w") do io
-        write_le_u16(io, i16_to_u16(center[1]))
-        write_le_u16(io, i16_to_u16(center[2]))
-        write_le_u16(io, i16_to_u16(center[3]))
-        @inbounds for i in 1:noff
-            ox, oy, oz = w.offsets[i]
-            dx = Int32(ox) - Int32(center[1])
-            dy = Int32(oy) - Int32(center[2])
-            dz = Int32(oz) - Int32(center[3])
-            (dx >= -128 && dx <= 127 && dy >= -128 && dy <= 127 && dz >= -128 && dz <= 127) ||
-                error("Offset cannot be encoded as int8 around center")
-            write(io, i8_to_u8(Int8(dx)))
-            write(io, i8_to_u8(Int8(dy)))
-            write(io, i8_to_u8(Int8(dz)))
-        end
+        write(io, offset_bytes)
     end
 
     w.total_written += UInt64(n)
@@ -1133,9 +1400,9 @@ function finish_pose_writer!(w::PoseFileWriter)
         flush_pose_writer!(w)
     end
     if w.total_written == 0 && w.write_empty_if_none
-        pose_path = joinpath(w.outdir, "poses-$(w.next_index).npy")
+        pose_path = joinpath(w.outdir, "poses-$(w.next_index).npy.zst")
         offsets_path = joinpath(w.outdir, "offsets-$(w.next_index).dat")
-        write_npy_u16_3cols(pose_path, UInt16[], UInt16[], UInt16[])
+        write_npy_u16_3cols_zst(pose_path, UInt16[], UInt16[], UInt16[])
         open(offsets_path, "w") do io
             write_le_u16(io, i16_to_u16(Int16(0)))
             write_le_u16(io, i16_to_u16(Int16(0)))
@@ -1202,6 +1469,49 @@ end
 
 function finish_index_writer!(w::IndexFileWriter)
     flush_index_writer!(w)
+end
+
+function init_index64_writer(
+    outdir::String,
+    prefix::String;
+    start_index::Int = 1,
+    flush_rows::Int = 2_000_000,
+)::Index64FileWriter
+    mkpath(outdir)
+    return Index64FileWriter(
+        outdir,
+        prefix,
+        start_index,
+        flush_rows,
+        UInt64(0),
+        UInt64[],
+        UInt64[],
+    )
+end
+
+function flush_index64_writer!(w::Index64FileWriter)
+    n = length(w.col1)
+    n == 0 && return
+    length(w.col2) == n || error("Index64 writer column length mismatch")
+    path = joinpath(w.outdir, "$(w.prefix)-$(w.next_index).npy")
+    write_npy_u64_2cols(path, w.col1, w.col2)
+    w.total_rows += UInt64(n)
+    w.next_index += 1
+    empty!(w.col1)
+    empty!(w.col2)
+end
+
+function add_index64_2!(w::Index64FileWriter, c1::Vector{UInt64}, c2::Vector{UInt64})
+    length(c1) == length(c2) || error("add_index64_2! length mismatch")
+    append!(w.col1, c1)
+    append!(w.col2, c2)
+    if length(w.col1) >= w.flush_rows
+        flush_index64_writer!(w)
+    end
+end
+
+function finish_index64_writer!(w::Index64FileWriter)
+    flush_index64_writer!(w)
 end
 
 function reserve_push!(
@@ -1568,6 +1878,1541 @@ function key_hash(conf::UInt16, rot::UInt16, x::Int16, y::Int16, z::Int16)::UInt
     return h
 end
 
+@inline function center_key_filename(center::NTuple{3, Int16})::String
+    return @sprintf("center-%d-%d-%d.bin", Int(center[1]), Int(center[2]), Int(center[3]))
+end
+
+@inline function write_keyidx_record(io::IO, rec::KeyIdxRecord)
+    write_le_u64(io, rec.key)
+    write_le_u32(io, rec.idx)
+end
+
+function read_keyidx_records(path::String)::Vector{KeyIdxRecord}
+    isfile(path) || return KeyIdxRecord[]
+    bytes = if endswith(path, ".zst")
+        decompress_zst_bytes(path)
+    else
+        read(path)
+    end
+    sz = length(bytes)
+    sz == 0 && return KeyIdxRecord[]
+    sz % 12 == 0 || error("Corrupt keyidx file size: $path")
+    n = Int(sz ÷ 12)
+    out = Vector{KeyIdxRecord}(undef, n)
+    p = 1
+    @inbounds for i in 1:n
+        out[i] = KeyIdxRecord(read_le_u64(bytes, p), read_le_u32(bytes, p + 8))
+        p += 12
+    end
+    return out
+end
+
+function read_key_records(path::String; single_thread::Bool = false)::Vector{UInt64}
+    isfile(path) || return UInt64[]
+    bytes = if endswith(path, ".zst")
+        decompress_zst_bytes(path; single_thread = single_thread)
+    else
+        read(path)
+    end
+    sz = length(bytes)
+    sz == 0 && return UInt64[]
+    sz % 8 == 0 || error("Corrupt key file size: $path")
+    raw = reinterpret(UInt64, bytes)
+    if ENDIAN_BOM == 0x04030201
+        return collect(raw)
+    end
+    n = length(raw)
+    out = Vector{UInt64}(undef, n)
+    @inbounds for i in 1:n
+        out[i] = bswap(raw[i])
+    end
+    return out
+end
+
+function open_zstd_writer(f::Function, path::String; single_thread::Bool = false)
+    zstd_threads = single_thread ? 1 : zstd_thread_count()
+    cmd = zstd_threads == 0 ?
+          `zstd -q -f -T0 -o $path --` :
+          `zstd -q -f -T$(zstd_threads) -o $path --`
+    try
+        open(cmd, "w") do io
+            f(io)
+        end
+    catch
+        # Fallback for zstd builds/options that reject -T on this path.
+        open(`zstd -q -f -o $path --`, "w") do io
+            f(io)
+        end
+    end
+end
+
+function zstd_single_thread_below_bytes()::Int
+    try
+        # Below this payload size, zstd threading overhead usually dominates.
+        return max(1, parse(Int, get(ENV, "CROCODILE_ZSTD_SINGLE_THREAD_BELOW_BYTES", "67108864")))
+    catch
+        return 67_108_864
+    end
+end
+
+@inline function zstd_should_use_single_thread(nbytes::Int)::Bool
+    nthreads() <= 2 && return true
+    nbytes < zstd_single_thread_below_bytes()
+end
+
+function write_u64_records_zst(path::String, values::Vector{UInt64}; single_thread::Bool = false)
+    open_zstd_writer(path; single_thread = single_thread) do io
+        write_u64_vector_le(io, values)
+    end
+end
+
+function write_u64_records_raw(path::String, values::Vector{UInt64})
+    open(path, "w") do io
+        write_u64_vector_le(io, values)
+    end
+end
+
+@inline function write_keyuid_record(io::IO, key::UInt64, uid::UInt32)
+    write_le_u64(io, key)
+    write_le_u32(io, uid)
+end
+
+@inline function write_keyuid_to_bytes!(buf::Vector{UInt8}, pos::Int, key::UInt64, uid::UInt32)
+    @inbounds begin
+        buf[pos] = UInt8(key & 0x00000000000000ff)
+        buf[pos + 1] = UInt8((key >> 8) & 0x00000000000000ff)
+        buf[pos + 2] = UInt8((key >> 16) & 0x00000000000000ff)
+        buf[pos + 3] = UInt8((key >> 24) & 0x00000000000000ff)
+        buf[pos + 4] = UInt8((key >> 32) & 0x00000000000000ff)
+        buf[pos + 5] = UInt8((key >> 40) & 0x00000000000000ff)
+        buf[pos + 6] = UInt8((key >> 48) & 0x00000000000000ff)
+        buf[pos + 7] = UInt8((key >> 56) & 0x00000000000000ff)
+        buf[pos + 8] = UInt8(uid & 0x000000ff)
+        buf[pos + 9] = UInt8((uid >> 8) & 0x000000ff)
+        buf[pos + 10] = UInt8((uid >> 16) & 0x000000ff)
+        buf[pos + 11] = UInt8((uid >> 24) & 0x000000ff)
+    end
+end
+
+function read_keyuid_records(path::String; single_thread::Bool = false)::Tuple{Vector{UInt64}, Vector{UInt32}}
+    isfile(path) || return UInt64[], UInt32[]
+    bytes = if endswith(path, ".zst")
+        decompress_zst_bytes(path; single_thread = single_thread)
+    else
+        read(path)
+    end
+    sz = length(bytes)
+    sz == 0 && return UInt64[], UInt32[]
+    sz % 12 == 0 || error("Corrupt keyuid file size: $path")
+    n = Int(sz ÷ 12)
+    keys = Vector{UInt64}(undef, n)
+    uids = Vector{UInt32}(undef, n)
+    p = 1
+    @inbounds for i in 1:n
+        keys[i] = read_le_u64(bytes, p)
+        uids[i] = read_le_u32(bytes, p + 8)
+        p += 12
+    end
+    return keys, uids
+end
+
+function read_key_records10(path::String; single_thread::Bool = false)::Vector{KeyRecord}
+    isfile(path) || return KeyRecord[]
+    bytes = if endswith(path, ".zst")
+        decompress_zst_bytes(path; single_thread = single_thread)
+    else
+        read(path)
+    end
+    sz = length(bytes)
+    sz == 0 && return KeyRecord[]
+    sz % 10 == 0 || error("Corrupt key-record file size: $path")
+    n = Int(sz ÷ 10)
+    out = Vector{KeyRecord}(undef, n)
+    p = 1
+    @inbounds for i in 1:n
+        out[i] = read_key_record(bytes, p)
+        p += 10
+    end
+    return out
+end
+
+function compress_file_zst_inplace(path::String)::String
+    isfile(path) || return path
+    endswith(path, ".zst") && return path
+    out = path * ".zst"
+    zstd_threads = zstd_thread_count()
+    cmd = zstd_threads == 0 ?
+          `zstd -q -f -T0 --rm -o $out -- $path` :
+          `zstd -q -f -T$(zstd_threads) --rm -o $out -- $path`
+    try
+        run(cmd)
+    catch
+        # Fallback for zstd builds/options that reject -T on this path.
+        run(`zstd -q -f --rm -o $out -- $path`)
+    end
+    return out
+end
+
+function compress_bytes_zst(raw::Vector{UInt8})::Vector{UInt8}
+    zstd_threads = zstd_thread_count()
+    cmd = zstd_threads == 0 ? `zstd -q -c -T0 --` : `zstd -q -c -T$(zstd_threads) --`
+    try
+        return read(pipeline(IOBuffer(raw), cmd))
+    catch
+        # Fallback for zstd builds/options that reject -T on this path.
+        return read(pipeline(IOBuffer(raw), `zstd -q -c --`))
+    end
+end
+
+function use_raw_temp_files()::Bool
+    raw = get(ENV, "CROCODILE_RAW_TEMP", "0")
+    return raw in ("1", "true", "TRUE", "yes", "YES")
+end
+
+function compress_index_bucket_files!(index::CanonicalSetIndex)
+    for paths in values(index.bucket_by_center)
+        for i in eachindex(paths)
+            paths[i] = compress_file_zst_inplace(paths[i])
+        end
+    end
+end
+
+function init_canonical_set_index()::CanonicalSetIndex
+    return CanonicalSetIndex(
+        Dict{NTuple{3, Int16}, Vector{PairWithStart}}(),
+        Dict{NTuple{3, Int16}, Vector{String}}(),
+        UInt64(0),
+        UInt64(0),
+    )
+end
+
+function append_noncanonical_pair_to_local_buckets!(
+    local_bucket_paths::Dict{NTuple{3, Int16}, String},
+    tmpdir::String,
+    tid::Int,
+    pair::PairInfo,
+    shared_confrot_mask::Union{Nothing, Vector{UInt64}} = nothing,
+)::UInt64
+    lp = load_pair(pair)
+    n = length(lp.conf)
+    n == length(lp.rot) || error("Malformed pair length mismatch: $(pair.pose_path)")
+    n == length(lp.offidx) || error("Malformed pair length mismatch: $(pair.pose_path)")
+
+    local_map = Dict{NTuple{3, Int16}, Vector{UInt64}}()
+    @inbounds for i in 1:n
+        if shared_confrot_mask !== nothing
+            bitset_has(shared_confrot_mask::Vector{UInt64}, pack_confrot(lp.conf[i], lp.rot[i])) || continue
+        end
+        oi = Int(lp.offidx[i]) + 1
+        x = lp.abs_offsets[oi, 1]
+        y = lp.abs_offsets[oi, 2]
+        z = lp.abs_offsets[oi, 3]
+        c = canonical_center(x, y, z)
+        rx32 = Int32(x) - Int32(c[1])
+        ry32 = Int32(y) - Int32(c[2])
+        rz32 = Int32(z) - Int32(c[3])
+        (rx32 >= -128 && rx32 <= 127 && ry32 >= -128 && ry32 <= 127 && rz32 >= -128 && rz32 <= 127) ||
+            error("Canonical rebasing failed for $(pair.pose_path)")
+        key = pack_rel_pose_key(lp.conf[i], lp.rot[i], Int8(rx32), Int8(ry32), Int8(rz32))
+        recs = get!(local_map, c, UInt64[])
+        push!(recs, key)
+    end
+
+    temp_bytes = UInt64(0)
+    raw_temp = use_raw_temp_files()
+    for (center, recs) in local_map
+        path = get(local_bucket_paths, center, "")
+        if isempty(path)
+            suffix = raw_temp ? ".bin" : ".zst"
+            path = joinpath(tmpdir, @sprintf("t%02d-%s%s", tid, center_key_filename(center), suffix))
+            local_bucket_paths[center] = path
+        end
+        raw = Vector{UInt8}(undef, length(recs) * 8)
+        p = 1
+        @inbounds for key in recs
+            raw[p] = UInt8(key & 0x00000000000000ff)
+            raw[p + 1] = UInt8((key >> 8) & 0x00000000000000ff)
+            raw[p + 2] = UInt8((key >> 16) & 0x00000000000000ff)
+            raw[p + 3] = UInt8((key >> 24) & 0x00000000000000ff)
+            raw[p + 4] = UInt8((key >> 32) & 0x00000000000000ff)
+            raw[p + 5] = UInt8((key >> 40) & 0x00000000000000ff)
+            raw[p + 6] = UInt8((key >> 48) & 0x00000000000000ff)
+            raw[p + 7] = UInt8((key >> 56) & 0x00000000000000ff)
+            p += 8
+        end
+        if raw_temp
+            open(path, "a") do io
+                write(io, raw)
+            end
+        else
+            zbytes = compress_bytes_zst(raw)
+            open(path, "a") do io
+                write(io, zbytes)
+            end
+        end
+        temp_bytes += UInt64(length(recs)) * UInt64(8)
+    end
+    return temp_bytes
+end
+
+function build_canonical_index!(
+    pairs::Vector{PairInfo},
+    tmpdir::String,
+    shared_confrot_mask::Union{Nothing, Vector{UInt64}} = nothing,
+)::CanonicalSetIndex
+    mkpath(tmpdir)
+    index = init_canonical_set_index()
+    npairs = length(pairs)
+    centers = Vector{NTuple{3, Int16}}(undef, npairs)
+    total_rows = UInt64(0)
+    for i in 1:npairs
+        pair = pairs[i]
+        center = read_offset_center(pair.offset_path)
+        nrows = pose_row_count(pair.pose_path)
+        centers[i] = center
+        total_rows += UInt64(nrows)
+    end
+
+    nt = Threads.maxthreadid()
+    local_pairs = [Dict{NTuple{3, Int16}, Vector{PairWithStart}}() for _ in 1:nt]
+    local_buckets = [Dict{NTuple{3, Int16}, String}() for _ in 1:nt]
+    local_bytes = fill(UInt64(0), nt)
+
+    @threads :static for i in 1:npairs
+        tid = threadid()
+        center = centers[i]
+        pair = pairs[i]
+        if is_center_canonical(center)
+            vec = get!(local_pairs[tid], center, PairWithStart[])
+            push!(vec, PairWithStart(pair))
+        else
+            local_bytes[tid] += append_noncanonical_pair_to_local_buckets!(
+                local_buckets[tid],
+                tmpdir,
+                tid,
+                pair,
+                shared_confrot_mask,
+            )
+        end
+    end
+
+    for tid in 1:nt
+        for (center, vec) in local_pairs[tid]
+            dst = get!(index.pairs_by_center, center, PairWithStart[])
+            append!(dst, vec)
+        end
+        for (center, path) in local_buckets[tid]
+            paths = get!(index.bucket_by_center, center, String[])
+            push!(paths, path)
+        end
+        index.temp_bytes += local_bytes[tid]
+    end
+
+    index.total_poses = total_rows
+    return index
+end
+
+function collect_center_keys(index::CanonicalSetIndex)::Set{NTuple{3, Int16}}
+    out = Set{NTuple{3, Int16}}()
+    for c in keys(index.pairs_by_center)
+        push!(out, c)
+    end
+    for c in keys(index.bucket_by_center)
+        push!(out, c)
+    end
+    return out
+end
+
+function load_center_keys(
+    index::CanonicalSetIndex,
+    center::NTuple{3, Int16},
+)::Vector{UInt64}
+    out = UInt64[]
+    pair_refs = get(index.pairs_by_center, center, PairWithStart[])
+    for pref in pair_refs
+        lp = load_pair(pref.pair)
+        lp.center == center || error("Canonical pair center mismatch for $(pref.pair.pose_path)")
+        n = length(lp.conf)
+        sizehint!(out, length(out) + n)
+        @inbounds for i in 1:n
+            oi = Int(lp.offidx[i]) + 1
+            key = pack_rel_pose_key(
+                lp.conf[i],
+                lp.rot[i],
+                lp.rel_offsets[oi, 1],
+                lp.rel_offsets[oi, 2],
+                lp.rel_offsets[oi, 3],
+            )
+            push!(out, key)
+        end
+    end
+    paths = get(index.bucket_by_center, center, String[])
+    for path in paths
+        append!(out, read_key_records(path))
+    end
+    return out
+end
+
+function load_center_keys_filtered(
+    index::CanonicalSetIndex,
+    center::NTuple{3, Int16},
+    shared_confrot_mask::Vector{UInt64},
+)::Vector{UInt64}
+    out = UInt64[]
+    pair_refs = get(index.pairs_by_center, center, PairWithStart[])
+    for pref in pair_refs
+        lp = load_pair(pref.pair)
+        lp.center == center || error("Canonical pair center mismatch for $(pref.pair.pose_path)")
+        n = length(lp.conf)
+        @inbounds for i in 1:n
+            conf = lp.conf[i]
+            rot = lp.rot[i]
+            bitset_has(shared_confrot_mask, pack_confrot(conf, rot)) || continue
+            oi = Int(lp.offidx[i]) + 1
+            key = pack_rel_pose_key(
+                conf,
+                rot,
+                lp.rel_offsets[oi, 1],
+                lp.rel_offsets[oi, 2],
+                lp.rel_offsets[oi, 3],
+            )
+            push!(out, key)
+        end
+    end
+    paths = get(index.bucket_by_center, center, String[])
+    for path in paths
+        keys = read_key_records(path)
+        @inbounds for k in keys
+            bitset_has(shared_confrot_mask, key_confrot(k)) || continue
+            push!(out, k)
+        end
+    end
+    return out
+end
+
+function center_inner_pass1_min_rows()::Int
+    try
+        return max(1, parse(Int, get(ENV, "CROCODILE_CENTER_INNER_PASS1_MIN_ROWS", "2000000")))
+    catch
+        return 2_000_000
+    end
+end
+
+function enable_global_confrot_prefilter()::Bool
+    raw = get(ENV, "CROCODILE_GLOBAL_CONFROT_PREFILTER", "0")
+    return raw in ("1", "true", "TRUE", "yes", "YES")
+end
+
+function enable_center_inner_pass1()::Bool
+    raw = get(ENV, "CROCODILE_CENTER_INNER_PASS1", "0")
+    return raw in ("1", "true", "TRUE", "yes", "YES")
+end
+
+function enable_map_confrot_prefilter()::Bool
+    raw = get(ENV, "CROCODILE_MAP_CONFROT_PREFILTER", "1")
+    return raw in ("1", "true", "TRUE", "yes", "YES")
+end
+
+@inline function pack_confrot(conf::UInt16, rot::UInt16)::UInt32
+    return UInt32(conf) | (UInt32(rot) << 16)
+end
+
+@inline function key_confrot(key::UInt64)::UInt32
+    return UInt32(key & 0x0000_0000_ffff_ffff)
+end
+
+@inline function bitset_word_and_bit(v::UInt32)::Tuple{Int, UInt64}
+    vv = UInt64(v)
+    wi = Int((vv >>> 6) + 1)
+    bit = UInt64(1) << Int(vv & 0x3f)
+    return wi, bit
+end
+
+@inline function bitset_has(mask::Vector{UInt64}, v::UInt32)::Bool
+    wi, bit = bitset_word_and_bit(v)
+    return (mask[wi] & bit) != 0
+end
+
+@inline function bitset_set_new!(mask::Vector{UInt64}, v::UInt32)::Bool
+    wi, bit = bitset_word_and_bit(v)
+    old = mask[wi]
+    new = old | bit
+    mask[wi] = new
+    return new != old
+end
+
+function confrot_mask_words()::Int
+    # 2^32 values, one bit each
+    return Int((UInt64(typemax(UInt32)) + UInt64(64)) >>> 6)
+end
+
+function update_confrot_mask_from_index!(
+    mask::Vector{UInt64},
+    index::CanonicalSetIndex,
+)::UInt64
+    uniq = UInt64(0)
+    for pair_refs in values(index.pairs_by_center)
+        for pref in pair_refs
+            conf, rot, _ = read_pose_columns(pref.pair.pose_path)
+            @inbounds for i in eachindex(conf)
+                uniq += bitset_set_new!(mask, pack_confrot(conf[i], rot[i])) ? UInt64(1) : UInt64(0)
+            end
+        end
+    end
+    for paths in values(index.bucket_by_center)
+        for path in paths
+            keys = read_key_records(path)
+            @inbounds for k in keys
+                uniq += bitset_set_new!(mask, key_confrot(k)) ? UInt64(1) : UInt64(0)
+            end
+        end
+    end
+    return uniq
+end
+
+function update_confrot_mask_from_pairs!(
+    mask::Vector{UInt64},
+    pairs::Vector{PairInfo},
+)::UInt64
+    uniq = UInt64(0)
+    for pair in pairs
+        conf, rot, _ = read_pose_columns(pair.pose_path)
+        @inbounds for i in eachindex(conf)
+            uniq += bitset_set_new!(mask, pack_confrot(conf[i], rot[i])) ? UInt64(1) : UInt64(0)
+        end
+    end
+    return uniq
+end
+
+function build_global_confrot_shared_mask_from_pairs(
+    pairs_a::Vector{PairInfo},
+    pairs_b::Vector{PairInfo},
+)::Tuple{Vector{UInt64}, UInt64, UInt64}
+    nwords = confrot_mask_words()
+    mask_a = zeros(UInt64, nwords)
+    shared = zeros(UInt64, nwords)
+    uniq_a = update_confrot_mask_from_pairs!(mask_a, pairs_a)
+    shared_count = UInt64(0)
+    for pair in pairs_b
+        conf, rot, _ = read_pose_columns(pair.pose_path)
+        @inbounds for i in eachindex(conf)
+            cr = pack_confrot(conf[i], rot[i])
+            if bitset_has(mask_a, cr)
+                shared_count += bitset_set_new!(shared, cr) ? UInt64(1) : UInt64(0)
+            end
+        end
+    end
+    return shared, uniq_a, shared_count
+end
+
+function build_global_confrot_shared_mask(
+    index_a::CanonicalSetIndex,
+    index_b::CanonicalSetIndex,
+)::Tuple{Vector{UInt64}, UInt64, UInt64}
+    nwords = confrot_mask_words()
+    mask_a = zeros(UInt64, nwords)
+    shared = zeros(UInt64, nwords)
+    uniq_a = update_confrot_mask_from_index!(mask_a, index_a)
+
+    shared_count = UInt64(0)
+    for pair_refs in values(index_b.pairs_by_center)
+        for pref in pair_refs
+            conf, rot, _ = read_pose_columns(pref.pair.pose_path)
+            @inbounds for i in eachindex(conf)
+                cr = pack_confrot(conf[i], rot[i])
+                if bitset_has(mask_a, cr)
+                    shared_count += bitset_set_new!(shared, cr) ? UInt64(1) : UInt64(0)
+                end
+            end
+        end
+    end
+    for paths in values(index_b.bucket_by_center)
+        for path in paths
+            keys = read_key_records(path)
+            @inbounds for k in keys
+                cr = key_confrot(k)
+                if bitset_has(mask_a, cr)
+                    shared_count += bitset_set_new!(shared, cr) ? UInt64(1) : UInt64(0)
+                end
+            end
+        end
+    end
+    return shared, uniq_a, shared_count
+end
+
+function update_confrot_mask_from_lookup_file!(
+    mask::Vector{UInt64},
+    path::String,
+)::UInt64
+    isfile(path) || return UInt64(0)
+    bytes = if endswith(path, ".zst")
+        decompress_zst_bytes(path; single_thread = true)
+    else
+        read(path)
+    end
+    sz = length(bytes)
+    sz == 0 && return UInt64(0)
+    sz % 12 == 0 || error("Corrupt keyuid file size: $path")
+
+    uniq = UInt64(0)
+    p = 1
+    @inbounds while p <= sz
+        cr = read_le_u32(bytes, p)
+        uniq += bitset_set_new!(mask, cr) ? UInt64(1) : UInt64(0)
+        p += 12
+    end
+    return uniq
+end
+
+function build_map_confrot_mask_from_lookup_paths(
+    lookup_paths::Dict{NTuple{3, Int16}, String},
+)::Tuple{Vector{UInt64}, UInt64}
+    mask = zeros(UInt64, confrot_mask_words())
+    uniq = UInt64(0)
+    for path in values(lookup_paths)
+        uniq += update_confrot_mask_from_lookup_file!(mask, path)
+    end
+    return mask, uniq
+end
+
+function filter_keys_by_confrot!(
+    keys::Vector{UInt64},
+    shared_mask::Vector{UInt64},
+)::Int
+    n = length(keys)
+    w = 1
+    @inbounds for r in 1:n
+        k = keys[r]
+        if bitset_has(shared_mask, key_confrot(k))
+            keys[w] = k
+            w += 1
+        end
+    end
+    resize!(keys, w - 1)
+    return w - 1
+end
+
+function build_shared_confrot_set_from_keys(
+    keys_a::Vector{UInt64},
+    keys_b::Vector{UInt64},
+)::Tuple{Set{UInt32}, UInt64, UInt64}
+    seen_a = Set{UInt32}()
+    sizehint!(seen_a, min(length(keys_a), 2_000_000))
+    @inbounds for k in keys_a
+        push!(seen_a, key_confrot(k))
+    end
+
+    shared = Set{UInt32}()
+    sizehint!(shared, min(length(keys_b), length(seen_a)))
+    @inbounds for k in keys_b
+        cr = key_confrot(k)
+        if cr in seen_a
+            push!(shared, cr)
+        end
+    end
+    return shared, UInt64(length(seen_a)), UInt64(length(shared))
+end
+
+function filter_keys_by_confrot_set!(
+    keys::Vector{UInt64},
+    shared_set::Set{UInt32},
+)::Int
+    n = length(keys)
+    w = 1
+    @inbounds for r in 1:n
+        k = keys[r]
+        if key_confrot(k) in shared_set
+            keys[w] = k
+            w += 1
+        end
+    end
+    resize!(keys, w - 1)
+    return w - 1
+end
+
+function center_inner_pass2_min_rows()::Int
+    try
+        return max(1, parse(Int, get(ENV, "CROCODILE_CENTER_INNER_PASS2_MIN_ROWS", "2000000")))
+    catch
+        return 2_000_000
+    end
+end
+
+function center_inner_pass2_chunk_rows()::Int
+    try
+        return max(1, parse(Int, get(ENV, "CROCODILE_CENTER_INNER_PASS2_CHUNK_ROWS", "1000000")))
+    catch
+        return 1_000_000
+    end
+end
+
+function enable_center_inner_pass2()::Bool
+    raw = get(ENV, "CROCODILE_CENTER_INNER_PASS2", "0")
+    return raw in ("1", "true", "TRUE", "yes", "YES")
+end
+
+function intersect_sorted_unique_serial(
+    keys_a::Vector{UInt64},
+    keys_b::Vector{UInt64},
+)::Vector{UInt64}
+    out = UInt64[]
+    sizehint!(out, min(length(keys_a), length(keys_b)))
+    ia = 1
+    ib = 1
+    na = length(keys_a)
+    nb = length(keys_b)
+    while ia <= na && ib <= nb
+        ka = keys_a[ia]
+        kb = keys_b[ib]
+        if ka < kb
+            ia += 1
+        elseif kb < ka
+            ib += 1
+        else
+            push!(out, ka)
+            ia += 1
+            ib += 1
+        end
+    end
+    return out
+end
+
+function intersect_sorted_unique_parallel(
+    keys_a::Vector{UInt64},
+    keys_b::Vector{UInt64},
+)::Vector{UInt64}
+    na = length(keys_a)
+    nb = length(keys_b)
+    if Threads.nthreads() <= 1 || min(na, nb) < center_inner_pass1_min_rows()
+        return intersect_sorted_unique_serial(keys_a, keys_b)
+    end
+
+    nparts = min(Threads.nthreads(), 8)
+    nparts <= 1 && return intersect_sorted_unique_serial(keys_a, keys_b)
+    big = na >= nb ? keys_a : keys_b
+
+    pivots = Vector{UInt64}(undef, nparts - 1)
+    @inbounds for p in 1:(nparts - 1)
+        idx = cld(p * length(big), nparts)
+        pivots[p] = big[idx]
+    end
+
+    a_starts = Vector{Int}(undef, nparts + 1)
+    b_starts = Vector{Int}(undef, nparts + 1)
+    a_starts[1] = 1
+    b_starts[1] = 1
+    @inbounds for p in 1:(nparts - 1)
+        a_starts[p + 1] = searchsortedfirst(keys_a, pivots[p])
+        b_starts[p + 1] = searchsortedfirst(keys_b, pivots[p])
+    end
+    a_starts[nparts + 1] = na + 1
+    b_starts[nparts + 1] = nb + 1
+
+    locals = [UInt64[] for _ in 1:nparts]
+    @sync for part in 1:nparts
+        Threads.@spawn begin
+            alo = a_starts[part]
+            ahi = a_starts[part + 1] - 1
+            blo = b_starts[part]
+            bhi = b_starts[part + 1] - 1
+            if alo > ahi || blo > bhi
+                locals[part] = UInt64[]
+                return
+            end
+
+            out = UInt64[]
+            sizehint!(out, min(ahi - alo + 1, bhi - blo + 1))
+            ia = alo
+            ib = blo
+            while ia <= ahi && ib <= bhi
+                ka = keys_a[ia]
+                kb = keys_b[ib]
+                if ka < kb
+                    ia += 1
+                elseif kb < ka
+                    ib += 1
+                else
+                    push!(out, ka)
+                    ia += 1
+                    ib += 1
+                end
+            end
+            locals[part] = out
+        end
+    end
+
+    total = 0
+    for v in locals
+        total += length(v)
+    end
+    out = Vector{UInt64}(undef, total)
+    pos = 1
+    for v in locals
+        n = length(v)
+        n == 0 && continue
+        copyto!(out, pos, v, 1, n)
+        pos += n
+    end
+    return out
+end
+
+function intersect_center_keys(
+    index_a::CanonicalSetIndex,
+    index_b::CanonicalSetIndex,
+    center::NTuple{3, Int16};
+    allow_inner_parallel::Bool = false,
+    shared_confrot_mask::Union{Nothing, Vector{UInt64}} = nothing,
+    local_confrot_prefilter::Bool = false,
+)::Vector{UInt64}
+    keys_a = shared_confrot_mask === nothing ?
+             load_center_keys(index_a, center) :
+             load_center_keys_filtered(index_a, center, shared_confrot_mask::Vector{UInt64})
+    keys_b = shared_confrot_mask === nothing ?
+             load_center_keys(index_b, center) :
+             load_center_keys_filtered(index_b, center, shared_confrot_mask::Vector{UInt64})
+    isempty(keys_a) && return UInt64[]
+    isempty(keys_b) && return UInt64[]
+    allow_inner_parallel && println("stage:mark unique-k-pass1-center-load-done")
+    if shared_confrot_mask === nothing && local_confrot_prefilter
+        shared_set, uniq_confrot_a, shared_confrot = build_shared_confrot_set_from_keys(keys_a, keys_b)
+        filter_keys_by_confrot_set!(keys_a, shared_set)
+        filter_keys_by_confrot_set!(keys_b, shared_set)
+        allow_inner_parallel && println("center confrot prefilter: unique-A=$uniq_confrot_a shared=$shared_confrot")
+        isempty(keys_a) && return UInt64[]
+        isempty(keys_b) && return UInt64[]
+    end
+
+    use_inner = allow_inner_parallel &&
+                enable_center_inner_pass1() &&
+                Threads.nthreads() > 1 &&
+                (length(keys_a) + length(keys_b)) >= center_inner_pass1_min_rows()
+    if use_inner
+        println("stage:mark unique-k-pass1-center-sort-start")
+        t = Threads.@spawn sort!(keys_a)
+        sort!(keys_b)
+        fetch(t)
+        t2 = Threads.@spawn unique!(keys_a)
+        unique!(keys_b)
+        fetch(t2)
+        isempty(keys_a) && return UInt64[]
+        isempty(keys_b) && return UInt64[]
+        println("stage:mark unique-k-pass1-center-sortuniq-done")
+        println("stage:mark unique-k-pass1-center-intersect-start")
+        out = intersect_sorted_unique_serial(keys_a, keys_b)
+        println("stage:mark unique-k-pass1-center-intersect-done")
+        return out
+    else
+        sort!(keys_a)
+        sort!(keys_b)
+        unique!(keys_a)
+        unique!(keys_b)
+        isempty(keys_a) && return UInt64[]
+        isempty(keys_b) && return UInt64[]
+        allow_inner_parallel && println("stage:mark unique-k-pass1-center-sortuniq-done")
+        allow_inner_parallel && println("stage:mark unique-k-pass1-center-intersect-start")
+        out = intersect_sorted_unique_serial(keys_a, keys_b)
+        allow_inner_parallel && println("stage:mark unique-k-pass1-center-intersect-done")
+        return out
+    end
+end
+
+function append_file_to_io!(out::IO, path::String, buf::Vector{UInt8})
+    open(path, "r") do io
+        while true
+            n = readbytes!(io, buf)
+            n == 0 && break
+            write(out, view(buf, 1:n))
+        end
+    end
+end
+
+function write_center_lookup_and_k_range!(
+    keys::Vector{UInt64},
+    j1::Int,
+    j2::Int,
+    center::NTuple{3, Int16},
+    base::UInt64,
+    part_dir::String,
+    lpath::String,
+    cfg::CliConfig,
+    raw_temp::Bool,
+)
+    j1 > j2 && return
+    k_part_writer = init_pose_writer(
+        part_dir;
+        start_index = 1,
+        max_poses_per_chunk = cfg.max_poses_per_chunk,
+        write_empty_if_none = false,
+    )
+    nrows = j2 - j1 + 1
+    lookup_bytes = Vector{UInt8}(undef, 12 * nrows)
+    p = 1
+    @inbounds for j in j1:j2
+        uid64 = base + UInt64(j - 1)
+        uid64 <= UInt64(typemax(UInt32)) || error("Unique-K index exceeds UInt32 range")
+        uid = UInt32(uid64)
+        ka = keys[j]
+        conf, rot, rx, ry, rz = unpack_rel_pose_key(ka)
+        x32 = Int32(center[1]) + Int32(rx)
+        y32 = Int32(center[2]) + Int32(ry)
+        z32 = Int32(center[3]) + Int32(rz)
+        (x32 >= typemin(Int16) && x32 <= typemax(Int16)) || error("x out of int16 range")
+        (y32 >= typemin(Int16) && y32 <= typemax(Int16)) || error("y out of int16 range")
+        (z32 >= typemin(Int16) && z32 <= typemax(Int16)) || error("z out of int16 range")
+        add_pose!(k_part_writer, conf, rot, Int16(x32), Int16(y32), Int16(z32))
+        write_keyuid_to_bytes!(lookup_bytes, p, ka, uid)
+        p += 12
+    end
+    if raw_temp
+        open(lpath, "w") do lio
+            write(lio, lookup_bytes)
+        end
+    else
+        open_zstd_writer(lpath; single_thread = zstd_should_use_single_thread(length(lookup_bytes))) do lio
+            write(lio, lookup_bytes)
+        end
+    end
+    finish_pose_writer!(k_part_writer)
+end
+
+function write_center_lookup_and_k_parallel!(
+    keys::Vector{UInt64},
+    center::NTuple{3, Int16},
+    base::UInt64,
+    part_dir::String,
+    lpath::String,
+    cfg::CliConfig,
+    raw_temp::Bool,
+)
+    n = length(keys)
+    chunk_rows = center_inner_pass2_chunk_rows()
+    nchunks = min(Threads.nthreads(), max(2, cld(n, chunk_rows)))
+    sub_dirs = fill("", nchunks)
+    sub_lookup_paths = fill("", nchunks)
+
+    @sync for c in 1:nchunks
+        Threads.@spawn begin
+            j1 = (c - 1) * chunk_rows + 1
+            j2 = min(n, c * chunk_rows)
+            j1 > j2 && return
+
+            sub_dir = joinpath(part_dir, @sprintf("chunk-%03d", c))
+            mkpath(sub_dir)
+            sub_lookup = lpath * @sprintf(".part%03d", c)
+            write_center_lookup_and_k_range!(keys, j1, j2, center, base, sub_dir, sub_lookup, cfg, raw_temp)
+            sub_dirs[c] = sub_dir
+            sub_lookup_paths[c] = sub_lookup
+        end
+    end
+
+    buf = Vector{UInt8}(undef, 1 << 20)
+    open(lpath, "w") do out
+        for c in 1:nchunks
+            p = sub_lookup_paths[c]
+            isempty(p) && continue
+            append_file_to_io!(out, p, buf)
+            rm(p; force = true)
+        end
+    end
+
+    next_idx = 1
+    for c in 1:nchunks
+        sub_dir = sub_dirs[c]
+        isempty(sub_dir) && continue
+        pairs = discover_pose_pairs(sub_dir)
+        for pair in pairs
+            pose_dst = joinpath(part_dir, "poses-$(next_idx).npy.zst")
+            offset_dst = joinpath(part_dir, "offsets-$(next_idx).dat")
+            mv(pair.pose_path, pose_dst; force = true)
+            mv(pair.offset_path, offset_dst; force = true)
+            next_idx += 1
+        end
+        rm(sub_dir; recursive = true, force = true)
+    end
+end
+
+function build_unique_k_and_lookup!(
+    index_a::CanonicalSetIndex,
+    index_b::CanonicalSetIndex,
+    outdir::String,
+    lookup_dir::String,
+    cfg::CliConfig,
+    shared_confrot_mask_in::Union{Nothing, Vector{UInt64}} = nothing,
+)::Tuple{UInt64, Dict{NTuple{3, Int16}, String}}
+    mkpath(lookup_dir)
+    raw_temp = use_raw_temp_files()
+    inter_ext = raw_temp ? "" : ".zst"
+    lookup_ext = raw_temp ? "" : ".zst"
+
+    centers_a = collect_center_keys(index_a)
+    centers_b = collect_center_keys(index_b)
+    common = sort!(collect(intersect(centers_a, centers_b)))
+    ncommon = length(common)
+    confrot_shared_mask::Union{Nothing, Vector{UInt64}} = shared_confrot_mask_in
+    local_confrot_prefilter = false
+    if confrot_shared_mask !== nothing
+        println("stage:mark unique-k-confrot-prefilter-reuse")
+    elseif enable_global_confrot_prefilter()
+        force_global = let raw = get(ENV, "CROCODILE_CONFROT_FORCE_GLOBAL", "0")
+            raw in ("1", "true", "TRUE", "yes", "YES")
+        end
+        min_rows_global = try
+            max(1, parse(Int, get(ENV, "CROCODILE_CONFROT_GLOBAL_MIN_ROWS", "1500000000")))
+        catch
+            1_500_000_000
+        end
+        total_rows_est = index_a.total_poses + index_b.total_poses
+        use_global = force_global || (total_rows_est >= UInt64(min_rows_global))
+        if use_global
+            println("stage:mark unique-k-confrot-prefilter-start")
+            confrot_shared_mask, uniq_confrot_a, shared_confrot = build_global_confrot_shared_mask(index_a, index_b)
+            println("unique-k confrot prefilter: unique-A=$uniq_confrot_a shared=$shared_confrot")
+            println("stage:mark unique-k-confrot-prefilter-end")
+        else
+            local_confrot_prefilter = true
+            println("stage:mark unique-k-confrot-prefilter-center-local")
+        end
+    end
+    lookup_paths = Dict{NTuple{3, Int16}, String}()
+    inter_dir = joinpath(lookup_dir, "_intersections")
+    mkpath(inter_dir)
+
+    inter_paths = fill("", ncommon)
+    inter_counts = fill(UInt64(0), ncommon)
+    progress_pass1 = Threads.Atomic{Int}(0)
+    q25 = ncommon > 0 ? cld(ncommon, 4) : 0
+    q50 = ncommon > 0 ? cld(ncommon, 2) : 0
+    q75 = ncommon > 0 ? cld(3 * ncommon, 4) : 0
+    if ncommon > 0
+        ch1 = Channel{Int}(ncommon)
+        for i in 1:ncommon
+            put!(ch1, i)
+        end
+        close(ch1)
+        nworkers1 = min(nthreads(), ncommon)
+        @sync for _ in 1:nworkers1
+            Threads.@spawn begin
+                for i in ch1
+                    center = common[i]
+                    keys = intersect_center_keys(
+                        index_a,
+                        index_b,
+                        center;
+                        allow_inner_parallel = (ncommon == 1),
+                        shared_confrot_mask = confrot_shared_mask,
+                        local_confrot_prefilter = local_confrot_prefilter,
+                    )
+                    if !isempty(keys)
+                        p = joinpath(inter_dir, center_key_filename(center) * inter_ext)
+                        if raw_temp
+                            write_u64_records_raw(p, keys)
+                        else
+                            write_u64_records_zst(
+                                p,
+                                keys;
+                                single_thread = zstd_should_use_single_thread(length(keys) * 8),
+                            )
+                        end
+                        inter_paths[i] = p
+                        inter_counts[i] = UInt64(length(keys))
+                    end
+                    done = Threads.atomic_add!(progress_pass1, 1) + 1
+                    done == q25 && println("stage:mark unique-k-pass1-25")
+                    done == q50 && println("stage:mark unique-k-pass1-50")
+                    done == q75 && println("stage:mark unique-k-pass1-75")
+                    done == ncommon && println("stage:mark unique-k-pass1-100")
+                end
+            end
+        end
+    end
+    confrot_shared_mask = nothing
+
+    uid_starts = fill(UInt64(0), ncommon)
+    uid_next = UInt64(0)
+    for i in 1:ncommon
+        uid_starts[i] = uid_next
+        uid_next += inter_counts[i]
+    end
+    uid_next <= UInt64(typemax(UInt32)) + UInt64(1) || error("Unique-K index exceeds UInt32 range")
+    println("stage:mark unique-k-pass2-start")
+
+    k_parts_dir = joinpath(lookup_dir, "_kparts")
+    mkpath(k_parts_dir)
+    part_dirs = fill("", ncommon)
+    part_lookup_paths = fill("", ncommon)
+    progress_pass2 = Threads.Atomic{Int}(0)
+    q25_2 = ncommon > 0 ? cld(ncommon, 4) : 0
+    q50_2 = ncommon > 0 ? cld(ncommon, 2) : 0
+    q75_2 = ncommon > 0 ? cld(3 * ncommon, 4) : 0
+
+    if ncommon > 0
+        ch2 = Channel{Int}(ncommon)
+        for i in 1:ncommon
+            put!(ch2, i)
+        end
+        close(ch2)
+        nworkers2 = min(nthreads(), ncommon)
+        if enable_center_inner_pass2() && nworkers2 > 1
+            nworkers2 = min(nworkers2, max(1, nthreads() ÷ 2))
+        end
+        avg_per_thread = nthreads() > 0 ? cld(uid_next, UInt64(nthreads())) : uid_next
+        @sync for _ in 1:nworkers2
+            Threads.@spawn begin
+                for i in ch2
+                    if inter_counts[i] != 0
+                        center = common[i]
+                        keys = read_key_records(
+                            inter_paths[i];
+                            single_thread = zstd_should_use_single_thread(Int(inter_counts[i] * UInt64(8))),
+                        )
+                        UInt64(length(keys)) == inter_counts[i] || error("Intersection key count mismatch for center $(center)")
+
+                        part_dir = joinpath(k_parts_dir, center_key_filename(center))
+                        mkpath(part_dir)
+                        lpath = joinpath(lookup_dir, center_key_filename(center) * lookup_ext)
+                        base = uid_starts[i]
+                        inner_pass2 = enable_center_inner_pass2() &&
+                                      Threads.nthreads() > 1 &&
+                                      length(keys) >= center_inner_pass2_min_rows() &&
+                                      inter_counts[i] >= avg_per_thread
+                        if inner_pass2
+                            write_center_lookup_and_k_parallel!(keys, center, base, part_dir, lpath, cfg, raw_temp)
+                        else
+                            write_center_lookup_and_k_range!(
+                                keys,
+                                1,
+                                length(keys),
+                                center,
+                                base,
+                                part_dir,
+                                lpath,
+                                cfg,
+                                raw_temp,
+                            )
+                        end
+                        part_dirs[i] = part_dir
+                        part_lookup_paths[i] = lpath
+                        rm(inter_paths[i]; force = true)
+                    end
+                    done = Threads.atomic_add!(progress_pass2, 1) + 1
+                    done == q25_2 && println("stage:mark unique-k-pass2-25")
+                    done == q50_2 && println("stage:mark unique-k-pass2-50")
+                    done == q75_2 && println("stage:mark unique-k-pass2-75")
+                    done == ncommon && println("stage:mark unique-k-pass2-100")
+                end
+            end
+        end
+    end
+    rm(inter_dir; recursive = true, force = true)
+    println("stage:mark unique-k-merge-start")
+
+    next_index = 1
+    for i in 1:ncommon
+        part_dirs[i] == "" && continue
+        pairs = discover_pose_pairs(part_dirs[i])
+        for pair in pairs
+            pose_dst = joinpath(outdir, "poses-$(next_index).npy.zst")
+            offset_dst = joinpath(outdir, "offsets-$(next_index).dat")
+            mv(pair.pose_path, pose_dst; force = true)
+            mv(pair.offset_path, offset_dst; force = true)
+            next_index += 1
+        end
+        rm(part_dirs[i]; recursive = true, force = true)
+        lookup_paths[common[i]] = part_lookup_paths[i]
+    end
+    rm(k_parts_dir; recursive = true, force = true)
+
+    if next_index == 1
+        k_writer = init_pose_writer(
+            outdir;
+            start_index = 1,
+            max_poses_per_chunk = cfg.max_poses_per_chunk,
+            write_empty_if_none = true,
+        )
+        finish_pose_writer!(k_writer)
+    end
+    return uid_next, lookup_paths
+end
+
+function get_lookup_for_center!(
+    cache::Dict{NTuple{3, Int16}, Dict{UInt64, UInt32}},
+    order::Vector{NTuple{3, Int16}},
+    lookup_paths::Dict{NTuple{3, Int16}, String},
+    center::NTuple{3, Int16},
+    max_cached::Int,
+)::Union{Nothing, Dict{UInt64, UInt32}}
+    existing = get(cache, center, nothing)
+    existing !== nothing && return existing::Dict{UInt64, UInt32}
+
+    path = get(lookup_paths, center, "")
+    isempty(path) && return nothing
+    fsz = try
+        Int(stat(path).size)
+    catch
+        0
+    end
+    keys, uids = read_keyuid_records(path; single_thread = zstd_should_use_single_thread(fsz))
+    d = Dict{UInt64, UInt32}()
+    sizehint!(d, length(keys))
+    @inbounds for i in eachindex(keys)
+        d[keys[i]] = uids[i]
+    end
+    cache[center] = d
+    push!(order, center)
+    if max_cached > 0 && length(order) > max_cached
+        old = popfirst!(order)
+        old != center && delete!(cache, old)
+    end
+    return d
+end
+
+function get_lookup_for_center_local!(
+    cache::Dict{NTuple{3, Int16}, Dict{UInt64, UInt32}},
+    missing::Set{NTuple{3, Int16}},
+    lookup_paths::Dict{NTuple{3, Int16}, String},
+    center::NTuple{3, Int16},
+)::Union{Nothing, Dict{UInt64, UInt32}}
+    (center in missing) && return nothing
+    existing = get(cache, center, nothing)
+    existing !== nothing && return existing::Dict{UInt64, UInt32}
+
+    path = get(lookup_paths, center, "")
+    if isempty(path)
+        push!(missing, center)
+        return nothing
+    end
+    keys, uids = read_keyuid_records(path; single_thread = true)
+    d = Dict{UInt64, UInt32}()
+    sizehint!(d, length(keys))
+    @inbounds for i in eachindex(keys)
+        d[keys[i]] = uids[i]
+    end
+    cache[center] = d
+    return d
+end
+
+function build_noncanonical_offset_lookup_info(
+    lp::LoadedPair,
+    lookup_paths::Dict{NTuple{3, Int16}, String},
+    cache::Dict{NTuple{3, Int16}, Dict{UInt64, UInt32}},
+    order::Vector{NTuple{3, Int16}},
+    max_cached::Int,
+)::Tuple{Vector{UInt64}, Vector{Int32}, Vector{Dict{UInt64, UInt32}}}
+    noff = size(lp.abs_offsets, 1)
+    off_suffix = Vector{UInt64}(undef, noff)
+    off_lookup_id = Vector{Int32}(undef, noff)
+
+    center_to_id = Dict{NTuple{3, Int16}, Int32}()
+    lookups = Dict{UInt64, UInt32}[]
+
+    @inbounds for oi in 1:noff
+        x = lp.abs_offsets[oi, 1]
+        y = lp.abs_offsets[oi, 2]
+        z = lp.abs_offsets[oi, 3]
+        center = canonical_center(x, y, z)
+        rx32 = Int32(x) - Int32(center[1])
+        ry32 = Int32(y) - Int32(center[2])
+        rz32 = Int32(z) - Int32(center[3])
+        (rx32 >= -128 && rx32 <= 127 && ry32 >= -128 && ry32 <= 127 && rz32 >= -128 && rz32 <= 127) ||
+            error("Canonical rebasing failed for offsets in center $(lp.center)")
+        off_suffix[oi] = pack_rel_suffix(Int8(rx32), Int8(ry32), Int8(rz32))
+
+        id = get(center_to_id, center, Int32(-1))
+        if id == Int32(-1)
+            lookup = get_lookup_for_center!(cache, order, lookup_paths, center, max_cached)
+            if lookup === nothing
+                id = Int32(0)
+            else
+                push!(lookups, lookup::Dict{UInt64, UInt32})
+                id = Int32(length(lookups))
+            end
+            center_to_id[center] = id
+        end
+        off_lookup_id[oi] = id
+    end
+    return off_suffix, off_lookup_id, lookups
+end
+
+function map_set_to_lookup!(
+    pairs::Vector{PairInfo},
+    lookup_paths::Dict{NTuple{3, Int16}, String},
+    outdir::String,
+    prefix::String,
+    cfg::CliConfig,
+    ;
+    total_poses::Union{Nothing, UInt64} = nothing,
+    confrot_mask::Union{Nothing, Vector{UInt64}} = nothing,
+)::UInt64
+    use_u32 = total_poses !== nothing && (total_poses::UInt64) <= (UInt64(typemax(UInt32)) + UInt64(1))
+    writer64 = use_u32 ? nothing : init_index64_writer(outdir, prefix; start_index = 1, flush_rows = cfg.threshold_k)
+    writer32 = use_u32 ? init_index_writer(outdir, prefix; start_index = 1, ncols = 2, flush_rows = cfg.threshold_k) : nothing
+    max_cached = try
+        parse(Int, get(ENV, "CROCODILE_LOOKUP_CACHE_CENTERS", "64"))
+    catch
+        64
+    end
+    max_cached = max(0, max_cached)
+    min_rows_threaded = try
+        parse(Int, get(ENV, "CROCODILE_MAP_THREADS_MIN_ROWS", "500000"))
+    catch
+        500_000
+    end
+    min_rows_threaded = max(1, min_rows_threaded)
+    cache = Dict{NTuple{3, Int16}, Dict{UInt64, UInt32}}()
+    order = NTuple{3, Int16}[]
+    use_confrot_mask = confrot_mask !== nothing
+    mask = confrot_mask
+
+    total_hits = UInt64(0)
+    global_start = UInt64(0)
+    for pair in pairs
+        lp = load_pair(pair)
+        n = length(lp.conf)
+        out_idx = UInt64[]
+        out_uid = UInt64[]
+        sizehint!(out_idx, n ÷ 16 + 1)
+        sizehint!(out_uid, n ÷ 16 + 1)
+
+        pair_center = lp.center
+        pair_is_canonical = is_center_canonical(pair_center)
+        if pair_is_canonical
+            lookup = get_lookup_for_center!(cache, order, lookup_paths, pair_center, max_cached)
+            if lookup !== nothing
+                d = lookup::Dict{UInt64, UInt32}
+                noff = size(lp.rel_offsets, 1)
+                rel_suffix = Vector{UInt64}(undef, noff)
+                @inbounds for oi in 1:noff
+                    rel_suffix[oi] = pack_rel_suffix(lp.rel_offsets[oi, 1], lp.rel_offsets[oi, 2], lp.rel_offsets[oi, 3])
+                end
+                if Threads.nthreads() > 1 && n >= min_rows_threaded
+                    nt = Threads.maxthreadid()
+                    local_idx = [UInt64[] for _ in 1:nt]
+                    local_uid = [UInt64[] for _ in 1:nt]
+                    hint = max(16, n ÷ max(1, nt * 8))
+                    @inbounds for tid in 1:nt
+                        sizehint!(local_idx[tid], hint)
+                        sizehint!(local_uid[tid], hint)
+                    end
+                    if use_confrot_mask
+                        @threads :static for i in 1:n
+                            tid = threadid()
+                            oi = Int(lp.offidx[i]) + 1
+                            cr = pack_confrot(lp.conf[i], lp.rot[i])
+                            bitset_has(mask::Vector{UInt64}, cr) || continue
+                            key = UInt64(cr) | rel_suffix[oi]
+                            uid = get(d, key, UInt32(0xffffffff))
+                            uid == UInt32(0xffffffff) && continue
+                            push!(local_idx[tid], global_start + UInt64(i - 1))
+                            push!(local_uid[tid], UInt64(uid))
+                        end
+                    else
+                        @threads :static for i in 1:n
+                            tid = threadid()
+                            oi = Int(lp.offidx[i]) + 1
+                            cr = pack_confrot(lp.conf[i], lp.rot[i])
+                            key = UInt64(cr) | rel_suffix[oi]
+                            uid = get(d, key, UInt32(0xffffffff))
+                            uid == UInt32(0xffffffff) && continue
+                            push!(local_idx[tid], global_start + UInt64(i - 1))
+                            push!(local_uid[tid], UInt64(uid))
+                        end
+                    end
+                    @inbounds for tid in 1:nt
+                        append!(out_idx, local_idx[tid])
+                        append!(out_uid, local_uid[tid])
+                    end
+                else
+                    if use_confrot_mask
+                        @inbounds for i in 1:n
+                            oi = Int(lp.offidx[i]) + 1
+                            cr = pack_confrot(lp.conf[i], lp.rot[i])
+                            bitset_has(mask::Vector{UInt64}, cr) || continue
+                            key = UInt64(cr) | rel_suffix[oi]
+                            uid = get(d, key, UInt32(0xffffffff))
+                            uid == UInt32(0xffffffff) && continue
+                            push!(out_idx, global_start + UInt64(i - 1))
+                            push!(out_uid, UInt64(uid))
+                        end
+                    else
+                        @inbounds for i in 1:n
+                            oi = Int(lp.offidx[i]) + 1
+                            cr = pack_confrot(lp.conf[i], lp.rot[i])
+                            key = UInt64(cr) | rel_suffix[oi]
+                            uid = get(d, key, UInt32(0xffffffff))
+                            uid == UInt32(0xffffffff) && continue
+                            push!(out_idx, global_start + UInt64(i - 1))
+                            push!(out_uid, UInt64(uid))
+                        end
+                    end
+                end
+            end
+        else
+            off_suffix, off_lookup_id, off_lookups = build_noncanonical_offset_lookup_info(
+                lp,
+                lookup_paths,
+                cache,
+                order,
+                max_cached,
+            )
+            isempty(off_lookups) || begin
+            if Threads.nthreads() > 1 && n >= min_rows_threaded
+                nt = Threads.maxthreadid()
+                local_idx = [UInt64[] for _ in 1:nt]
+                local_uid = [UInt64[] for _ in 1:nt]
+                hint = max(16, n ÷ max(1, nt * 8))
+                @inbounds for tid in 1:nt
+                    sizehint!(local_idx[tid], hint)
+                    sizehint!(local_uid[tid], hint)
+                end
+                if use_confrot_mask
+                    @threads :static for i in 1:n
+                        tid = threadid()
+                        oi = Int(lp.offidx[i]) + 1
+                        lid = off_lookup_id[oi]
+                        lid == 0 && continue
+                        cr = pack_confrot(lp.conf[i], lp.rot[i])
+                        bitset_has(mask::Vector{UInt64}, cr) || continue
+                        key = UInt64(cr) | off_suffix[oi]
+                        uid = get(off_lookups[Int(lid)], key, UInt32(0xffffffff))
+                        uid == UInt32(0xffffffff) && continue
+                        push!(local_idx[tid], global_start + UInt64(i - 1))
+                        push!(local_uid[tid], UInt64(uid))
+                    end
+                else
+                    @threads :static for i in 1:n
+                        tid = threadid()
+                        oi = Int(lp.offidx[i]) + 1
+                        lid = off_lookup_id[oi]
+                        lid == 0 && continue
+                        cr = pack_confrot(lp.conf[i], lp.rot[i])
+                        key = UInt64(cr) | off_suffix[oi]
+                        uid = get(off_lookups[Int(lid)], key, UInt32(0xffffffff))
+                        uid == UInt32(0xffffffff) && continue
+                        push!(local_idx[tid], global_start + UInt64(i - 1))
+                        push!(local_uid[tid], UInt64(uid))
+                    end
+                end
+                @inbounds for tid in 1:nt
+                    append!(out_idx, local_idx[tid])
+                    append!(out_uid, local_uid[tid])
+                end
+            else
+                if use_confrot_mask
+                    @inbounds for i in 1:n
+                        oi = Int(lp.offidx[i]) + 1
+                        lid = off_lookup_id[oi]
+                        lid == 0 && continue
+                        cr = pack_confrot(lp.conf[i], lp.rot[i])
+                        bitset_has(mask::Vector{UInt64}, cr) || continue
+                        key = UInt64(cr) | off_suffix[oi]
+                        uid = get(off_lookups[Int(lid)], key, UInt32(0xffffffff))
+                        uid == UInt32(0xffffffff) && continue
+                        push!(out_idx, global_start + UInt64(i - 1))
+                        push!(out_uid, UInt64(uid))
+                    end
+                else
+                    @inbounds for i in 1:n
+                        oi = Int(lp.offidx[i]) + 1
+                        lid = off_lookup_id[oi]
+                        lid == 0 && continue
+                        cr = pack_confrot(lp.conf[i], lp.rot[i])
+                        key = UInt64(cr) | off_suffix[oi]
+                        uid = get(off_lookups[Int(lid)], key, UInt32(0xffffffff))
+                        uid == UInt32(0xffffffff) && continue
+                        push!(out_idx, global_start + UInt64(i - 1))
+                        push!(out_uid, UInt64(uid))
+                    end
+                end
+            end
+            end
+        end
+
+        if !isempty(out_idx)
+            total_hits += UInt64(length(out_idx))
+            if use_u32
+                nout = length(out_idx)
+                c1 = Vector{UInt32}(undef, nout)
+                c2 = Vector{UInt32}(undef, nout)
+                @inbounds for i in 1:nout
+                    out_idx[i] <= UInt64(typemax(UInt32)) || error("Index exceeds UInt32 range")
+                    out_uid[i] <= UInt64(typemax(UInt32)) || error("Unique index exceeds UInt32 range")
+                    c1[i] = UInt32(out_idx[i])
+                    c2[i] = UInt32(out_uid[i])
+                end
+                add_index2!(writer32::IndexFileWriter, c1, c2)
+            else
+                add_index64_2!(writer64::Index64FileWriter, out_idx, out_uid)
+            end
+        end
+        global_start += UInt64(n)
+    end
+    if use_u32
+        finish_index_writer!(writer32::IndexFileWriter)
+    else
+        finish_index64_writer!(writer64::Index64FileWriter)
+    end
+    return total_hits
+end
+
+function build_lookup_from_existing_unique_k!(
+    unique_pairs::Vector{PairInfo},
+    lookup_dir::String,
+)::Tuple{UInt64, Dict{NTuple{3, Int16}, String}}
+    mkpath(lookup_dir)
+    raw_temp = use_raw_temp_files()
+    tmp_paths = Dict{NTuple{3, Int16}, String}()
+    uid_next = UInt64(0)
+    for pair in unique_pairs
+        lp = load_pair(pair)
+        n = length(lp.conf)
+        local_bufs = Dict{NTuple{3, Int16}, Vector{UInt8}}()
+        @inbounds for i in 1:n
+            oi = Int(lp.offidx[i]) + 1
+            x = lp.abs_offsets[oi, 1]
+            y = lp.abs_offsets[oi, 2]
+            z = lp.abs_offsets[oi, 3]
+            center = canonical_center(x, y, z)
+            rx32 = Int32(x) - Int32(center[1])
+            ry32 = Int32(y) - Int32(center[2])
+            rz32 = Int32(z) - Int32(center[3])
+            (rx32 >= -128 && rx32 <= 127 && ry32 >= -128 && ry32 <= 127 && rz32 >= -128 && rz32 <= 127) ||
+                error("Canonical rebasing failed for $(pair.pose_path)")
+
+            uid_next <= UInt64(typemax(UInt32)) || error("Unique-K index exceeds UInt32 range")
+            uid = UInt32(uid_next)
+            uid_next += UInt64(1)
+            key = pack_rel_pose_key(lp.conf[i], lp.rot[i], Int8(rx32), Int8(ry32), Int8(rz32))
+            buf = get!(local_bufs, center, UInt8[])
+            p = length(buf) + 1
+            resize!(buf, p + 11)
+            write_keyuid_to_bytes!(buf, p, key, uid)
+        end
+
+        for (center, buf) in local_bufs
+            path = get(tmp_paths, center, "")
+            if isempty(path)
+                path = joinpath(lookup_dir, center_key_filename(center))
+                tmp_paths[center] = path
+            end
+            open(path, "a") do io
+                write(io, buf)
+            end
+        end
+    end
+
+    lookup_paths = Dict{NTuple{3, Int16}, String}()
+    if raw_temp
+        for (center, path) in tmp_paths
+            lookup_paths[center] = path
+        end
+    else
+        for (center, path) in tmp_paths
+            lookup_paths[center] = compress_file_zst_inplace(path)
+        end
+    end
+    return uid_next, lookup_paths
+end
+
 function discover_prefix_npy(dir::String, prefix::String)::Vector{Tuple{Int, String}}
     files = Tuple{Int, String}[]
     for name in readdir(dir)
@@ -1902,6 +3747,14 @@ function sum_pose_file_sizes(pairs::Vector{PairInfo})::Int64
     return s
 end
 
+function sum_pose_rows(pairs::Vector{PairInfo})::UInt64
+    s = UInt64(0)
+    for p in pairs
+        s += UInt64(pose_row_count(p.pose_path))
+    end
+    return s
+end
+
 function dir_size_bytes(path::String)::UInt64
     isdir(path) || return UInt64(0)
     total = UInt64(0)
@@ -1929,6 +3782,11 @@ function fmt_bytes(n::UInt64)::String
     return @sprintf("%.2f %s", v, units[i])
 end
 
+function should_print_size_stats()::Bool
+    raw = get(ENV, "CROCODILE_PRINT_SIZE_STATS", "0")
+    return raw in ("1", "true", "TRUE", "yes", "YES")
+end
+
 function main(argv::Vector{String})::Int
     cfg = parse_args(argv)
     isdir(cfg.set1) || error("Input directory not found: $(cfg.set1)")
@@ -1949,28 +3807,115 @@ function main(argv::Vector{String})::Int
     mkpath(cfg.output)
     tmp_root = joinpath(cfg.output, "_tmp")
     mkpath(tmp_root)
-    key_bucket_dir = joinpath(tmp_root, "key-buckets")
-    mkpath(key_bucket_dir)
+    tmp_a = joinpath(tmp_root, "set-a-reorg")
+    tmp_b = joinpath(tmp_root, "set-b-reorg")
+    mkpath(tmp_a)
+    mkpath(tmp_b)
 
     println("A (largest): $large_name")
     println("B (smallest): $small_name")
     println("threads: $(nthreads())")
+    print_sizes = should_print_size_stats()
 
-    first_pass_count = run_first_pass_to_key_buckets!(large_pairs, small_pairs, key_bucket_dir, cfg)
-    println("first-pass K rows: $first_pass_count")
-    println("tmp size after first pass: $(fmt_bytes(dir_size_bytes(tmp_root)))")
+    lookup_dir = joinpath(tmp_root, "k-lookup")
+    lookup_paths = Dict{NTuple{3, Int16}, String}()
+    unique_k_count = UInt64(0)
+    total_rows_large = UInt64(0)
+    total_rows_small = UInt64(0)
 
-    unique_k_count = dedup_key_buckets_to_unique_k!(key_bucket_dir, cfg.output, cfg)
+    if cfg.reuse_unique_k_dir === nothing
+        prefilter_shared_mask::Union{Nothing, Vector{UInt64}} = nothing
+        if enable_global_confrot_prefilter()
+            println("stage:start confrot-prefilter")
+            t_stage = time()
+            prefilter_shared_mask, uniq_confrot_a, shared_confrot = build_global_confrot_shared_mask_from_pairs(large_pairs, small_pairs)
+            println("confrot prefilter (pre-canonical): unique-A=$uniq_confrot_a shared=$shared_confrot")
+            println(@sprintf("stage:end confrot-prefilter %.3f", time() - t_stage))
+        end
+
+        println("stage:start canonicalization")
+        t_stage = time()
+        index_a = build_canonical_index!(large_pairs, tmp_a, prefilter_shared_mask)
+        index_b = build_canonical_index!(small_pairs, tmp_b, prefilter_shared_mask)
+        println(@sprintf("stage:end canonicalization %.3f", time() - t_stage))
+        println("A poses indexed: $(index_a.total_poses), temp rewrite (raw est): $(fmt_bytes(index_a.temp_bytes))")
+        println("B poses indexed: $(index_b.total_poses), temp rewrite (raw est): $(fmt_bytes(index_b.temp_bytes))")
+        if print_sizes
+            println("tmp size after canonicalization: $(fmt_bytes(dir_size_bytes(tmp_root)))")
+        end
+
+        println("stage:start unique-k")
+        t_stage = time()
+        unique_k_count, lookup_paths = build_unique_k_and_lookup!(
+            index_a,
+            index_b,
+            cfg.output,
+            lookup_dir,
+            cfg,
+            prefilter_shared_mask,
+        )
+        println(@sprintf("stage:end unique-k %.3f", time() - t_stage))
+        total_rows_large = index_a.total_poses
+        total_rows_small = index_b.total_poses
+    else
+        reuse_dir = cfg.reuse_unique_k_dir::String
+        isdir(reuse_dir) || error("Unique-K directory not found: $reuse_dir")
+        println("reuse unique-K from: $reuse_dir")
+        reuse_pairs = discover_pose_pairs(reuse_dir)
+        println("stage:start reuse-unique-k-lookup")
+        t_stage = time()
+        unique_k_count, lookup_paths = build_lookup_from_existing_unique_k!(reuse_pairs, lookup_dir)
+        println(@sprintf("stage:end reuse-unique-k-lookup %.3f", time() - t_stage))
+        total_rows_large = sum_pose_rows(large_pairs)
+        total_rows_small = sum_pose_rows(small_pairs)
+        println("A source rows: $total_rows_large")
+        println("B source rows: $total_rows_small")
+    end
+
+    map_confrot_mask::Union{Nothing, Vector{UInt64}} = nothing
+    if enable_map_confrot_prefilter()
+        println("stage:start map-confrot-mask")
+        t_stage = time()
+        map_confrot_mask, map_confrot_uniq = build_map_confrot_mask_from_lookup_paths(lookup_paths)
+        println("map confrot mask size: $map_confrot_uniq")
+        println(@sprintf("stage:end map-confrot-mask %.3f", time() - t_stage))
+    end
+
+    println("stage:start map-a")
+    t_stage = time()
+    matched_a_rows = map_set_to_lookup!(
+        large_pairs,
+        lookup_paths,
+        cfg.output,
+        "ind-A",
+        cfg;
+        total_poses = total_rows_large,
+        confrot_mask = map_confrot_mask,
+    )
+    println(@sprintf("stage:end map-a %.3f", time() - t_stage))
+
+    println("stage:start map-b")
+    t_stage = time()
+    matched_b_rows = map_set_to_lookup!(
+        small_pairs,
+        lookup_paths,
+        cfg.output,
+        "ind-B",
+        cfg;
+        total_poses = total_rows_small,
+        confrot_mask = map_confrot_mask,
+    )
+    println(@sprintf("stage:end map-b %.3f", time() - t_stage))
+    println("matched A rows: $matched_a_rows")
+    println("matched B rows: $matched_b_rows")
     println("unique-K rows: $unique_k_count")
-    println("tmp size after dedup: $(fmt_bytes(dir_size_bytes(tmp_root)))")
-
-    unique_k_pairs = discover_pose_pairs(cfg.output)
-    run_index_pass!(large_pairs, unique_k_pairs, cfg.output, cfg; prefix = "ind-A")
-    println("tmp size after ind-A: $(fmt_bytes(dir_size_bytes(tmp_root)))")
-    run_index_pass!(small_pairs, unique_k_pairs, cfg.output, cfg; prefix = "ind-B")
-    println("tmp size after ind-B: $(fmt_bytes(dir_size_bytes(tmp_root)))")
+    if print_sizes
+        println("tmp size after matching: $(fmt_bytes(dir_size_bytes(tmp_root)))")
+    end
     println("done")
-    println("output size: $(fmt_bytes(dir_size_bytes(cfg.output)))")
+    if print_sizes
+        println("output size: $(fmt_bytes(dir_size_bytes(cfg.output)))")
+    end
 
     if cfg.keep_temp
         println("kept temp directory: $tmp_root")
