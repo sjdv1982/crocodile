@@ -5,6 +5,8 @@ using Printf
 
 const I16_MIN = Int32(typemin(Int8))
 const I16_MAX = Int32(typemax(Int8))
+const CENTER_INNER_PASS2_MIN_ROWS = 2_000_000
+const CENTER_INNER_PASS2_CHUNK_ROWS = 1_000_000
 
 struct CliConfig
     set1::String
@@ -20,6 +22,8 @@ struct CliConfig
     phase1_zstd_threads::Union{Nothing, Int}
     map_zstd_threads::Union{Nothing, Int}
     map_workers::Int
+    max_poses_prefilter::Int
+    max_poses_final::Int
 end
 
 struct PairInfo
@@ -151,6 +155,8 @@ function usage()
           --phase1-zstd-threads <n>   zstd threads for prefilter/canonicalization/unique-k (default: CROCODILE_ZSTD_THREADS)
           --map-zstd-threads <n>      zstd threads for map-a/map-b stages (default: 1)
           --map-workers <n>           Julia worker tasks for map-a/map-b (0 means auto: no-HT equivalent)
+          --max-poses-prefilter <n>   Abort before unique-k/map if max(A,B) post-confrot rows exceeds n (0 disables, default: 5000000000)
+          --max-poses-final <n>       Abort before map-a/map-b if unique-K rows exceeds n (0 disables, default: 50000000)
           -h, --help                  Show help
         """
     )
@@ -180,6 +186,8 @@ function parse_args(argv::Vector{String})::CliConfig
     phase1_zstd_threads = nothing
     map_zstd_threads = 1
     map_workers = 0
+    max_poses_prefilter = 5_000_000_000
+    max_poses_final = 50_000_000
 
     i = 4
     while i <= length(argv)
@@ -232,6 +240,27 @@ function parse_args(argv::Vector{String})::CliConfig
             map_workers = parse(Int, argv[i + 1])
             i += 2
             continue
+        elseif arg == "--max-poses-prefilter"
+            i + 1 <= length(argv) || error("--max-poses-prefilter requires a value")
+            max_poses_prefilter = parse(Int, argv[i + 1])
+            i += 2
+            continue
+        elseif arg == "--max-poses-final"
+            i + 1 <= length(argv) || error("--max-poses-final requires a value")
+            max_poses_final = parse(Int, argv[i + 1])
+            i += 2
+            continue
+        # Backward-compatible aliases for older scripts.
+        elseif arg == "--panic-max-post-confrot-rows"
+            i + 1 <= length(argv) || error("--panic-max-post-confrot-rows requires a value")
+            max_poses_prefilter = parse(Int, argv[i + 1])
+            i += 2
+            continue
+        elseif arg == "--panic-max-unique-k-rows"
+            i + 1 <= length(argv) || error("--panic-max-unique-k-rows requires a value")
+            max_poses_final = parse(Int, argv[i + 1])
+            i += 2
+            continue
         else
             error("Unknown argument: $arg")
         end
@@ -245,6 +274,8 @@ function parse_args(argv::Vector{String})::CliConfig
     phase1_zstd_threads === nothing || phase1_zstd_threads >= 0 || error("--phase1-zstd-threads must be >= 0")
     map_zstd_threads === nothing || map_zstd_threads >= 0 || error("--map-zstd-threads must be >= 0")
     map_workers >= 0 || error("--map-workers must be >= 0")
+    max_poses_prefilter >= 0 || error("--max-poses-prefilter must be >= 0")
+    max_poses_final >= 0 || error("--max-poses-final must be >= 0")
 
     return CliConfig(
         set1,
@@ -260,6 +291,8 @@ function parse_args(argv::Vector{String})::CliConfig
         phase1_zstd_threads,
         map_zstd_threads,
         map_workers,
+        max_poses_prefilter,
+        max_poses_final,
     )
 end
 
@@ -2449,27 +2482,6 @@ function filter_keys_by_confrot_set!(
     return w - 1
 end
 
-function center_inner_pass2_min_rows()::Int
-    try
-        return max(1, parse(Int, get(ENV, "CROCODILE_CENTER_INNER_PASS2_MIN_ROWS", "2000000")))
-    catch
-        return 2_000_000
-    end
-end
-
-function center_inner_pass2_chunk_rows()::Int
-    try
-        return max(1, parse(Int, get(ENV, "CROCODILE_CENTER_INNER_PASS2_CHUNK_ROWS", "1000000")))
-    catch
-        return 1_000_000
-    end
-end
-
-function enable_center_inner_pass2()::Bool
-    raw = get(ENV, "CROCODILE_CENTER_INNER_PASS2", "0")
-    return raw in ("1", "true", "TRUE", "yes", "YES")
-end
-
 function intersect_sorted_unique_serial(
     keys_a::Vector{UInt64},
     keys_b::Vector{UInt64},
@@ -2586,7 +2598,7 @@ function write_center_lookup_and_k_parallel!(
     cfg::CliConfig,
 )
     n = length(keys)
-    chunk_rows = center_inner_pass2_chunk_rows()
+    chunk_rows = CENTER_INNER_PASS2_CHUNK_ROWS
     nchunks = min(Threads.nthreads(), max(2, cld(n, chunk_rows)))
     sub_dirs = fill("", nchunks)
     sub_lookup_paths = fill("", nchunks)
@@ -2731,7 +2743,7 @@ function build_unique_k_and_lookup!(
         end
         close(ch2)
         nworkers2 = min(nthreads(), ncommon)
-        if enable_center_inner_pass2() && nworkers2 > 1
+        if nworkers2 > 1
             nworkers2 = min(nworkers2, max(1, nthreads() ÷ 2))
         end
         avg_per_thread = nthreads() > 0 ? cld(uid_next, UInt64(nthreads())) : uid_next
@@ -2750,9 +2762,8 @@ function build_unique_k_and_lookup!(
                         mkpath(part_dir)
                         lpath = joinpath(lookup_dir, center_key_filename(center) * lookup_ext)
                         base = uid_starts[i]
-                        inner_pass2 = enable_center_inner_pass2() &&
-                                      Threads.nthreads() > 1 &&
-                                      length(keys) >= center_inner_pass2_min_rows() &&
+                        inner_pass2 = Threads.nthreads() > 1 &&
+                                      length(keys) >= CENTER_INNER_PASS2_MIN_ROWS &&
                                       inter_counts[i] >= avg_per_thread
                         if inner_pass2
                             write_center_lookup_and_k_parallel!(keys, center, base, part_dir, lpath, cfg)
@@ -3228,6 +3239,24 @@ function should_print_size_stats()::Bool
     return raw in ("1", "true", "TRUE", "yes", "YES")
 end
 
+function panic_if_over_limit(stage::String, name::String, value::UInt64, limit::Int)
+    limit <= 0 && return
+    lim = UInt64(limit)
+    value <= lim && return
+    error(
+        "$stage panic: $name=$value exceeds configured limit $limit. " *
+        "Adjust with --$(name) <n> or set to 0 to disable."
+    )
+end
+
+function post_confrot_row_count(index::CanonicalSetIndex, used_prefilter::Bool)::UInt64
+    if !used_prefilter
+        return index.total_poses
+    end
+    index.temp_bytes % UInt64(24) == 0 || error("Internal error: prefilter bucket bytes are not a multiple of 24")
+    return index.temp_bytes ÷ UInt64(24)
+end
+
 function main(argv::Vector{String})::Int
     cfg = parse_args(argv)
     cfg.reuse_unique_k_dir !== nothing && cfg.stop_after_unique_k &&
@@ -3286,9 +3315,18 @@ function main(argv::Vector{String})::Int
         index_b = build_canonical_index!(small_pairs, tmp_b, prefilter_shared_mask)
         index_large = index_a
         index_small = index_b
+        post_confrot_a = post_confrot_row_count(index_a, prefilter_shared_mask !== nothing)
+        post_confrot_b = post_confrot_row_count(index_b, prefilter_shared_mask !== nothing)
         println(@sprintf("stage:end canonicalization %.3f", time() - t_stage))
-        println("A poses indexed: $(index_a.total_poses), temp rewrite (raw est): $(fmt_bytes(index_a.temp_bytes))")
-        println("B poses indexed: $(index_b.total_poses), temp rewrite (raw est): $(fmt_bytes(index_b.temp_bytes))")
+        println("A poses indexed (raw): $(index_a.total_poses), post-confrot kept: $post_confrot_a, temp rewrite (raw est): $(fmt_bytes(index_a.temp_bytes))")
+        println("B poses indexed (raw): $(index_b.total_poses), post-confrot kept: $post_confrot_b, temp rewrite (raw est): $(fmt_bytes(index_b.temp_bytes))")
+        max_post_confrot = max(post_confrot_a, post_confrot_b)
+        panic_if_over_limit(
+            "post-confrot",
+            "max-poses-prefilter",
+            max_post_confrot,
+            cfg.max_poses_prefilter,
+        )
         if print_sizes
             println("tmp size after canonicalization: $(fmt_bytes(dir_size_bytes(tmp_root)))")
         end
@@ -3337,6 +3375,13 @@ function main(argv::Vector{String})::Int
         end
         return 0
     end
+
+    panic_if_over_limit(
+        "pre-map",
+        "max-poses-final",
+        unique_k_count,
+        cfg.max_poses_final,
+    )
 
     set_runtime_stage!(:map)
     matched_a_rows = UInt64(0)
