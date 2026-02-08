@@ -73,32 +73,12 @@ struct BLookupSecondPass
     key_to_unique::Dict{UInt64, UInt32}
 end
 
-struct BucketRecord
-    conf::UInt16
-    rot::UInt16
-    x::Int16
-    y::Int16
-    z::Int16
-    old_idx::UInt32
-end
-
-struct MapRecord
-    old_idx::UInt32
-    uniq_idx::UInt32
-end
-
 struct KeyRecord
     conf::UInt16
     rot::UInt16
     x::Int16
     y::Int16
     z::Int16
-end
-
-struct HeapNode
-    old_idx::UInt32
-    uniq_idx::UInt32
-    src::Int
 end
 
 struct PairWithStart
@@ -154,20 +134,6 @@ mutable struct Index64FileWriter
     col2::Vector{UInt64}
 end
 
-struct PendingRawK
-    conf::Vector{UInt16}
-    rot::Vector{UInt16}
-    x::Vector{Int16}
-    y::Vector{Int16}
-    z::Vector{Int16}
-    aidx::Vector{UInt32}
-end
-
-struct FirstPassResult
-    k_count::UInt64
-    pending::Union{Nothing, PendingRawK}
-end
-
 function usage()
     println(
         """
@@ -183,7 +149,7 @@ function usage()
           --reuse-unique-k-dir <dir>  Skip prefilter/canonicalization/unique-k and reuse existing unique-K poses
           --stop-after-unique-k       Stop after writing unique-K poses (skip map-a/map-b)
           --phase1-zstd-threads <n>   zstd threads for prefilter/canonicalization/unique-k (default: CROCODILE_ZSTD_THREADS)
-          --map-zstd-threads <n>      zstd threads for map-a/map-b stages (default: CROCODILE_ZSTD_THREADS)
+          --map-zstd-threads <n>      zstd threads for map-a/map-b stages (default: 1)
           --map-workers <n>           Julia worker tasks for map-a/map-b (0 means auto: no-HT equivalent)
           -h, --help                  Show help
         """
@@ -212,7 +178,7 @@ function parse_args(argv::Vector{String})::CliConfig
     reuse_unique_k_dir = nothing
     stop_after_unique_k = false
     phase1_zstd_threads = nothing
-    map_zstd_threads = nothing
+    map_zstd_threads = 1
     map_workers = 0
 
     i = 4
@@ -1697,302 +1663,6 @@ function reserve_push!(
     append_active!(ap, active)
 end
 
-function run_first_pass_to_key_buckets!(
-    a_pairs::Vector{PairInfo},
-    b_pairs::Vector{PairInfo},
-    bucket_dir::String,
-    cfg::CliConfig,
-)::UInt64
-    nb = cfg.dedup_buckets
-    mkpath(bucket_dir)
-    bucket_paths = [joinpath(bucket_dir, @sprintf("keybucket-%05d.bin", i)) for i in 0:(nb - 1)]
-    bucket_ios = [open(p, "w") for p in bucket_paths]
-
-    total_matches = UInt64(0)
-    reserve = Dict{Int, ActivePool}()
-    a_counter = UInt64(0)
-    try
-        for aa in a_pairs
-            aa_loaded = load_pair(aa)
-            active = init_active_pool()
-            add_new_aa_to_active!(active, aa_loaded, a_counter)
-
-            for (bb_i, bb) in enumerate(b_pairs)
-                if haskey(reserve, bb_i)
-                    append_active!(active, reserve[bb_i])
-                    delete!(reserve, bb_i)
-                end
-                active_length(active) == 0 && continue
-
-                bb_loaded = load_pair(bb)
-                b_lookup = make_blookup_first(bb_loaded)
-                matched = match_active_first_pass!(active, b_lookup)
-
-                n = length(matched.conf)
-                total_matches += UInt64(n)
-                @inbounds for i in 1:n
-                    bidx = key_bucket_id(
-                        matched.conf[i],
-                        matched.rot[i],
-                        matched.x[i],
-                        matched.y[i],
-                        matched.z[i],
-                        nb,
-                    )
-                    write_key_record(
-                        bucket_ios[bidx],
-                        KeyRecord(
-                            matched.conf[i],
-                            matched.rot[i],
-                            matched.x[i],
-                            matched.y[i],
-                            matched.z[i],
-                        ),
-                    )
-                end
-
-                # Note 1: do not reserve/break on the last BB pair.
-                if active_length(active) < cfg.threshold_m && bb_i < length(b_pairs)
-                    reserve_push!(reserve, bb_i, active)
-                    clear_active!(active)
-                    break
-                end
-            end
-
-            clear_active!(active)
-            a_counter += UInt64(length(aa_loaded.conf))
-        end
-    finally
-        for io in bucket_ios
-            close(io)
-        end
-    end
-
-    return total_matches
-end
-
-function dedup_key_buckets_to_unique_k!(
-    bucket_dir::String,
-    outdir::String,
-    cfg::CliConfig,
-)::UInt64
-    nb = cfg.dedup_buckets
-    unique_writer = init_pose_writer(
-        outdir;
-        start_index = 1,
-        max_poses_per_chunk = cfg.max_poses_per_chunk,
-        write_empty_if_none = true,
-    )
-
-    for b in 0:(nb - 1)
-        path = joinpath(bucket_dir, @sprintf("keybucket-%05d.bin", b))
-        isfile(path) || continue
-        sz = stat(path).size
-        sz == 0 && continue
-        sz % 10 == 0 || error("Corrupt key bucket file size: $path")
-        bytes = read(path)
-        n = Int(sz ÷ 10)
-        recs = Vector{KeyRecord}(undef, n)
-        p = 1
-        @inbounds for i in 1:n
-            recs[i] = read_key_record(bytes, p)
-            p += 10
-        end
-
-        sort!(recs, by = r -> (r.conf, r.rot, r.x, r.y, r.z))
-        i = 1
-        while i <= n
-            r0 = recs[i]
-            add_pose!(unique_writer, r0.conf, r0.rot, r0.x, r0.y, r0.z)
-            key = (r0.conf, r0.rot, r0.x, r0.y, r0.z)
-            i += 1
-            while i <= n && (recs[i].conf, recs[i].rot, recs[i].x, recs[i].y, recs[i].z) == key
-                i += 1
-            end
-        end
-        rm(path; force = true)
-    end
-    finish_pose_writer!(unique_writer)
-    return unique_writer.total_written
-end
-
-function run_index_pass!(
-    a_pairs::Vector{PairInfo},
-    b_pairs::Vector{PairInfo},
-    outdir::String,
-    cfg::CliConfig;
-    prefix::String,
-)
-    starts = Vector{UInt32}(undef, length(b_pairs))
-    cursor = UInt64(0)
-    for (i, p) in enumerate(b_pairs)
-        cursor <= UInt64(typemax(UInt32)) || error("Unique-K index exceeds uint32 range")
-        starts[i] = UInt32(cursor)
-        cursor += UInt64(pose_row_count(p.pose_path))
-    end
-    cursor <= UInt64(typemax(UInt32)) + UInt64(1) || error("Unique-K index exceeds uint32 range")
-
-    writer = init_index_writer(outdir, prefix; start_index = 1, ncols = 2, flush_rows = cfg.threshold_k)
-    buf_idx = UInt32[]
-    buf_uidx = UInt32[]
-    reserve = Dict{Int, ActivePool}()
-    a_counter = UInt64(0)
-
-    for aa in a_pairs
-        aa_loaded = load_pair(aa)
-        active = init_active_pool()
-        add_new_aa_to_active!(active, aa_loaded, a_counter)
-
-        for (bb_i, bb) in enumerate(b_pairs)
-            if haskey(reserve, bb_i)
-                append_active!(active, reserve[bb_i])
-                delete!(reserve, bb_i)
-            end
-            active_length(active) == 0 && continue
-
-            bb_loaded = load_pair(bb)
-            b_lookup = make_blookup_second(bb_loaded, starts[bb_i])
-            matched = match_active_second_pass!(active, b_lookup)
-
-            if !isempty(matched.aidx)
-                append!(buf_idx, matched.aidx)
-                append!(buf_uidx, matched.uniq_idx)
-            end
-
-            if length(buf_idx) >= cfg.threshold_k
-                add_index2!(writer, buf_idx, buf_uidx)
-                empty!(buf_idx)
-                empty!(buf_uidx)
-            end
-
-            # Note 1: do not reserve/break on the last BB pair.
-            if active_length(active) < cfg.threshold_m && bb_i < length(b_pairs)
-                reserve_push!(reserve, bb_i, active)
-                clear_active!(active)
-                break
-            end
-        end
-
-        clear_active!(active)
-        a_counter += UInt64(length(aa_loaded.conf))
-    end
-
-    if !isempty(buf_idx)
-        add_index2!(writer, buf_idx, buf_uidx)
-    end
-    finish_index_writer!(writer)
-end
-
-function run_first_pass!(
-    a_pairs::Vector{PairInfo},
-    b_pairs::Vector{PairInfo},
-    raw_k_dir::String,
-    raw_ind_a_dir::String,
-    cfg::CliConfig,
-)::FirstPassResult
-    k_writer = init_pose_writer(
-        raw_k_dir;
-        start_index = 1,
-        max_poses_per_chunk = cfg.max_poses_per_chunk,
-        write_empty_if_none = false,
-    )
-    ki_writer = init_index_writer(raw_ind_a_dir, "ind-A"; start_index = 1, ncols = 1, flush_rows = cfg.threshold_k)
-
-    kbuf_conf = UInt16[]
-    kbuf_rot = UInt16[]
-    kbuf_x = Int16[]
-    kbuf_y = Int16[]
-    kbuf_z = Int16[]
-    kbuf_aidx = UInt32[]
-
-    reserve = Dict{Int, ActivePool}()
-    a_counter = UInt64(0)
-    flushed_any = false
-
-    for aa in a_pairs
-        aa_loaded = load_pair(aa)
-        active = init_active_pool()
-        add_new_aa_to_active!(active, aa_loaded, a_counter)
-
-        for (bb_i, bb) in enumerate(b_pairs)
-            if haskey(reserve, bb_i)
-                append_active!(active, reserve[bb_i])
-                delete!(reserve, bb_i)
-            end
-            active_length(active) == 0 && continue
-
-            bb_loaded = load_pair(bb)
-            b_lookup = make_blookup_first(bb_loaded)
-            matched = match_active_first_pass!(active, b_lookup)
-
-            if !isempty(matched.conf)
-                append!(kbuf_conf, matched.conf)
-                append!(kbuf_rot, matched.rot)
-                append!(kbuf_x, matched.x)
-                append!(kbuf_y, matched.y)
-                append!(kbuf_z, matched.z)
-                append!(kbuf_aidx, matched.aidx)
-            end
-
-            if length(kbuf_conf) >= cfg.threshold_k
-                add_pose_batch!(k_writer, kbuf_conf, kbuf_rot, kbuf_x, kbuf_y, kbuf_z)
-                add_index1!(ki_writer, kbuf_aidx)
-                flushed_any = true
-                empty!(kbuf_conf)
-                empty!(kbuf_rot)
-                empty!(kbuf_x)
-                empty!(kbuf_y)
-                empty!(kbuf_z)
-                empty!(kbuf_aidx)
-            end
-
-            # Note 1: do not reserve/break on the last BB pair.
-            if active_length(active) < cfg.threshold_m && bb_i < length(b_pairs)
-                reserve_push!(reserve, bb_i, active)
-                clear_active!(active)
-                break
-            end
-        end
-
-        clear_active!(active)
-        a_counter += UInt64(length(aa_loaded.conf))
-    end
-
-    pending::Union{Nothing, PendingRawK} = nothing
-    if !isempty(kbuf_conf) && flushed_any
-        add_pose_batch!(k_writer, kbuf_conf, kbuf_rot, kbuf_x, kbuf_y, kbuf_z)
-        add_index1!(ki_writer, kbuf_aidx)
-    elseif !isempty(kbuf_conf)
-        # Note 2: if K was never flushed before, keep K/KI in memory (no final flush).
-        pending = PendingRawK(
-            copy(kbuf_conf),
-            copy(kbuf_rot),
-            copy(kbuf_x),
-            copy(kbuf_y),
-            copy(kbuf_z),
-            copy(kbuf_aidx),
-        )
-    end
-    finish_pose_writer!(k_writer)
-    finish_index_writer!(ki_writer)
-    k_count = if pending === nothing
-        k_writer.total_written
-    else
-        kp = pending::PendingRawK
-        UInt64(length(kp.conf))
-    end
-    return FirstPassResult(k_count, pending)
-end
-
-function write_bucket_record(io::IO, r::BucketRecord)
-    write_le_u16(io, r.conf)
-    write_le_u16(io, r.rot)
-    write_le_u16(io, i16_to_u16(r.x))
-    write_le_u16(io, i16_to_u16(r.y))
-    write_le_u16(io, i16_to_u16(r.z))
-    write_le_u32(io, r.old_idx)
-end
-
 function write_key_record(io::IO, r::KeyRecord)
     write_le_u16(io, r.conf)
     write_le_u16(io, r.rot)
@@ -2010,48 +1680,6 @@ function read_key_record(bytes::Vector{UInt8}, pos::Int)::KeyRecord
     return KeyRecord(conf, rot, x, y, z)
 end
 
-@inline function key_bucket_id(
-    conf::UInt16,
-    rot::UInt16,
-    x::Int16,
-    y::Int16,
-    z::Int16,
-    nbuckets::Int,
-)::Int
-    return Int(key_hash(conf, rot, x, y, z) & UInt64(nbuckets - 1)) + 1
-end
-
-function read_bucket_record(bytes::Vector{UInt8}, pos::Int)::BucketRecord
-    conf = read_le_u16(bytes, pos)
-    rot = read_le_u16(bytes, pos + 2)
-    x = u16_to_i16(read_le_u16(bytes, pos + 4))
-    y = u16_to_i16(read_le_u16(bytes, pos + 6))
-    z = u16_to_i16(read_le_u16(bytes, pos + 8))
-    old_idx = read_le_u32(bytes, pos + 10)
-    return BucketRecord(conf, rot, x, y, z, old_idx)
-end
-
-function write_map_record(io::IO, r::MapRecord)
-    write_le_u32(io, r.old_idx)
-    write_le_u32(io, r.uniq_idx)
-end
-
-function read_map_record(bytes::Vector{UInt8}, pos::Int)::MapRecord
-    old_idx = read_le_u32(bytes, pos)
-    uniq_idx = read_le_u32(bytes, pos + 4)
-    return MapRecord(old_idx, uniq_idx)
-end
-
-function key_hash(conf::UInt16, rot::UInt16, x::Int16, y::Int16, z::Int16)::UInt64
-    h = UInt64(0x9e3779b97f4a7c15)
-    h ⊻= UInt64(conf) * UInt64(0xbf58476d1ce4e5b9)
-    h ⊻= UInt64(rot) * UInt64(0x94d049bb133111eb)
-    h ⊻= UInt64(i16_to_u16(x)) * UInt64(0xd6e8feb86659fd93)
-    h ⊻= UInt64(i16_to_u16(y)) * UInt64(0xa0761d6478bd642f)
-    h ⊻= UInt64(i16_to_u16(z)) * UInt64(0xe7037ed1a0b428db)
-    return h
-end
-
 @inline function center_key_filename(center::NTuple{3, Int16})::String
     return @sprintf("center-%d-%d-%d.bin", Int(center[1]), Int(center[2]), Int(center[3]))
 end
@@ -2059,26 +1687,6 @@ end
 @inline function write_keyidx_record(io::IO, rec::KeyIdxRecord)
     write_le_u64(io, rec.key)
     write_le_u32(io, rec.idx)
-end
-
-function read_keyidx_records(path::String)::Vector{KeyIdxRecord}
-    isfile(path) || return KeyIdxRecord[]
-    bytes = if endswith(path, ".zst")
-        decompress_zst_bytes(path)
-    else
-        read(path)
-    end
-    sz = length(bytes)
-    sz == 0 && return KeyIdxRecord[]
-    sz % 12 == 0 || error("Corrupt keyidx file size: $path")
-    n = Int(sz ÷ 12)
-    out = Vector{KeyIdxRecord}(undef, n)
-    p = 1
-    @inbounds for i in 1:n
-        out[i] = KeyIdxRecord(read_le_u64(bytes, p), read_le_u32(bytes, p + 8))
-        p += 12
-    end
-    return out
 end
 
 function read_keyidx64_records(path::String; single_thread::Bool = false)::Tuple{Vector{UInt64}, Vector{UInt64}}
@@ -2260,11 +1868,6 @@ function compress_bytes_zst(raw::Vector{UInt8})::Vector{UInt8}
     end
 end
 
-function use_raw_temp_files()::Bool
-    raw = get(ENV, "CROCODILE_RAW_TEMP", "0")
-    return raw in ("1", "true", "TRUE", "yes", "YES")
-end
-
 function compress_index_bucket_files!(index::CanonicalSetIndex)
     for paths in values(index.bucket_by_center)
         for i in eachindex(paths)
@@ -2316,12 +1919,10 @@ function append_noncanonical_pair_to_local_buckets!(
     end
 
     temp_bytes = UInt64(0)
-    raw_temp = use_raw_temp_files()
     for (center, recs) in local_map
         path = get(local_bucket_paths, center, "")
         if isempty(path)
-            suffix = raw_temp ? ".bin" : ".zst"
-            path = joinpath(tmpdir, @sprintf("t%02d-%s%s", tid, center_key_filename(center), suffix))
+            path = joinpath(tmpdir, @sprintf("t%02d-%s.zst", tid, center_key_filename(center)))
             local_bucket_paths[center] = path
         end
         raw = Vector{UInt8}(undef, length(recs) * 8)
@@ -2337,15 +1938,9 @@ function append_noncanonical_pair_to_local_buckets!(
             raw[p + 7] = UInt8((key >> 56) & 0x00000000000000ff)
             p += 8
         end
-        if raw_temp
-            open(path, "a") do io
-                write(io, raw)
-            end
-        else
-            zbytes = compress_bytes_zst(raw)
-            open(path, "a") do io
-                write(io, zbytes)
-            end
+        zbytes = compress_bytes_zst(raw)
+        open(path, "a") do io
+            write(io, zbytes)
         end
         temp_bytes += UInt64(length(recs)) * UInt64(8)
     end
@@ -2391,20 +1986,17 @@ function append_pair_to_local_prefilter_buckets!(
     end
 
     temp_bytes = UInt64(0)
-    raw_temp = use_raw_temp_files()
     for (center, keys) in local_keys
         idx = local_idx[center]
         length(idx) == length(keys) || error("Internal key/index length mismatch")
         kpath = get(local_key_paths, center, "")
         mpath = get(local_map_paths, center, "")
         if isempty(kpath)
-            suffix = raw_temp ? ".bin" : ".zst"
-            kpath = joinpath(tmpdir, @sprintf("t%02d-%s%s", tid, center_key_filename(center), suffix))
+            kpath = joinpath(tmpdir, @sprintf("t%02d-%s.zst", tid, center_key_filename(center)))
             local_key_paths[center] = kpath
         end
         if isempty(mpath)
-            suffix = raw_temp ? ".bin" : ".zst"
-            mpath = joinpath(tmpdir, @sprintf("t%02d-%s-idx64%s", tid, center_key_filename(center), suffix))
+            mpath = joinpath(tmpdir, @sprintf("t%02d-%s-idx64.zst", tid, center_key_filename(center)))
             local_map_paths[center] = mpath
         end
 
@@ -2446,22 +2038,13 @@ function append_pair_to_local_prefilter_buckets!(
             p += 16
         end
 
-        if raw_temp
-            open(kpath, "a") do io
-                write(io, raw_keys)
-            end
-            open(mpath, "a") do io
-                write(io, raw_map)
-            end
-        else
-            zkeys = compress_bytes_zst(raw_keys)
-            zmap = compress_bytes_zst(raw_map)
-            open(kpath, "a") do io
-                write(io, zkeys)
-            end
-            open(mpath, "a") do io
-                write(io, zmap)
-            end
+        zkeys = compress_bytes_zst(raw_keys)
+        zmap = compress_bytes_zst(raw_map)
+        open(kpath, "a") do io
+            write(io, zkeys)
+        end
+        open(mpath, "a") do io
+            write(io, zmap)
         end
         temp_bytes += UInt64(length(keys)) * UInt64(24)
     end
@@ -2647,29 +2230,6 @@ function load_center_keys_filtered(
         end
     end
     return out
-end
-
-function center_inner_pass1_min_rows()::Int
-    try
-        return max(1, parse(Int, get(ENV, "CROCODILE_CENTER_INNER_PASS1_MIN_ROWS", "2000000")))
-    catch
-        return 2_000_000
-    end
-end
-
-function enable_global_confrot_prefilter()::Bool
-    raw = get(ENV, "CROCODILE_GLOBAL_CONFROT_PREFILTER", "0")
-    return raw in ("1", "true", "TRUE", "yes", "YES")
-end
-
-function enable_center_inner_pass1()::Bool
-    raw = get(ENV, "CROCODILE_CENTER_INNER_PASS1", "0")
-    return raw in ("1", "true", "TRUE", "yes", "YES")
-end
-
-function enable_map_confrot_prefilter()::Bool
-    raw = get(ENV, "CROCODILE_MAP_CONFROT_PREFILTER", "1")
-    return raw in ("1", "true", "TRUE", "yes", "YES")
 end
 
 @inline function pack_confrot(conf::UInt16, rot::UInt16)::UInt32
@@ -2936,92 +2496,12 @@ function intersect_sorted_unique_serial(
     return out
 end
 
-function intersect_sorted_unique_parallel(
-    keys_a::Vector{UInt64},
-    keys_b::Vector{UInt64},
-)::Vector{UInt64}
-    na = length(keys_a)
-    nb = length(keys_b)
-    if Threads.nthreads() <= 1 || min(na, nb) < center_inner_pass1_min_rows()
-        return intersect_sorted_unique_serial(keys_a, keys_b)
-    end
-
-    nparts = min(Threads.nthreads(), 8)
-    nparts <= 1 && return intersect_sorted_unique_serial(keys_a, keys_b)
-    big = na >= nb ? keys_a : keys_b
-
-    pivots = Vector{UInt64}(undef, nparts - 1)
-    @inbounds for p in 1:(nparts - 1)
-        idx = cld(p * length(big), nparts)
-        pivots[p] = big[idx]
-    end
-
-    a_starts = Vector{Int}(undef, nparts + 1)
-    b_starts = Vector{Int}(undef, nparts + 1)
-    a_starts[1] = 1
-    b_starts[1] = 1
-    @inbounds for p in 1:(nparts - 1)
-        a_starts[p + 1] = searchsortedfirst(keys_a, pivots[p])
-        b_starts[p + 1] = searchsortedfirst(keys_b, pivots[p])
-    end
-    a_starts[nparts + 1] = na + 1
-    b_starts[nparts + 1] = nb + 1
-
-    locals = [UInt64[] for _ in 1:nparts]
-    @sync for part in 1:nparts
-        Threads.@spawn begin
-            alo = a_starts[part]
-            ahi = a_starts[part + 1] - 1
-            blo = b_starts[part]
-            bhi = b_starts[part + 1] - 1
-            if alo > ahi || blo > bhi
-                locals[part] = UInt64[]
-                return
-            end
-
-            out = UInt64[]
-            sizehint!(out, min(ahi - alo + 1, bhi - blo + 1))
-            ia = alo
-            ib = blo
-            while ia <= ahi && ib <= bhi
-                ka = keys_a[ia]
-                kb = keys_b[ib]
-                if ka < kb
-                    ia += 1
-                elseif kb < ka
-                    ib += 1
-                else
-                    push!(out, ka)
-                    ia += 1
-                    ib += 1
-                end
-            end
-            locals[part] = out
-        end
-    end
-
-    total = 0
-    for v in locals
-        total += length(v)
-    end
-    out = Vector{UInt64}(undef, total)
-    pos = 1
-    for v in locals
-        n = length(v)
-        n == 0 && continue
-        copyto!(out, pos, v, 1, n)
-        pos += n
-    end
-    return out
-end
-
 function intersect_center_keys(
     index_a::CanonicalSetIndex,
     index_b::CanonicalSetIndex,
     center::NTuple{3, Int16};
     allow_inner_parallel::Bool = false,
     shared_confrot_mask::Union{Nothing, Vector{UInt64}} = nothing,
-    local_confrot_prefilter::Bool = false,
 )::Vector{UInt64}
     keys_a = shared_confrot_mask === nothing ?
              load_center_keys(index_a, center) :
@@ -3032,47 +2512,17 @@ function intersect_center_keys(
     isempty(keys_a) && return UInt64[]
     isempty(keys_b) && return UInt64[]
     allow_inner_parallel && println("stage:mark unique-k-pass1-center-load-done")
-    if shared_confrot_mask === nothing && local_confrot_prefilter
-        shared_set, uniq_confrot_a, shared_confrot = build_shared_confrot_set_from_keys(keys_a, keys_b)
-        filter_keys_by_confrot_set!(keys_a, shared_set)
-        filter_keys_by_confrot_set!(keys_b, shared_set)
-        allow_inner_parallel && println("center confrot prefilter: unique-A=$uniq_confrot_a shared=$shared_confrot")
-        isempty(keys_a) && return UInt64[]
-        isempty(keys_b) && return UInt64[]
-    end
-
-    use_inner = allow_inner_parallel &&
-                enable_center_inner_pass1() &&
-                Threads.nthreads() > 1 &&
-                (length(keys_a) + length(keys_b)) >= center_inner_pass1_min_rows()
-    if use_inner
-        println("stage:mark unique-k-pass1-center-sort-start")
-        t = Threads.@spawn sort!(keys_a)
-        sort!(keys_b)
-        fetch(t)
-        t2 = Threads.@spawn unique!(keys_a)
-        unique!(keys_b)
-        fetch(t2)
-        isempty(keys_a) && return UInt64[]
-        isempty(keys_b) && return UInt64[]
-        println("stage:mark unique-k-pass1-center-sortuniq-done")
-        println("stage:mark unique-k-pass1-center-intersect-start")
-        out = intersect_sorted_unique_serial(keys_a, keys_b)
-        println("stage:mark unique-k-pass1-center-intersect-done")
-        return out
-    else
-        sort!(keys_a)
-        sort!(keys_b)
-        unique!(keys_a)
-        unique!(keys_b)
-        isempty(keys_a) && return UInt64[]
-        isempty(keys_b) && return UInt64[]
-        allow_inner_parallel && println("stage:mark unique-k-pass1-center-sortuniq-done")
-        allow_inner_parallel && println("stage:mark unique-k-pass1-center-intersect-start")
-        out = intersect_sorted_unique_serial(keys_a, keys_b)
-        allow_inner_parallel && println("stage:mark unique-k-pass1-center-intersect-done")
-        return out
-    end
+    sort!(keys_a)
+    sort!(keys_b)
+    unique!(keys_a)
+    unique!(keys_b)
+    isempty(keys_a) && return UInt64[]
+    isempty(keys_b) && return UInt64[]
+    allow_inner_parallel && println("stage:mark unique-k-pass1-center-sortuniq-done")
+    allow_inner_parallel && println("stage:mark unique-k-pass1-center-intersect-start")
+    out = intersect_sorted_unique_serial(keys_a, keys_b)
+    allow_inner_parallel && println("stage:mark unique-k-pass1-center-intersect-done")
+    return out
 end
 
 function append_file_to_io!(out::IO, path::String, buf::Vector{UInt8})
@@ -3094,7 +2544,6 @@ function write_center_lookup_and_k_range!(
     part_dir::String,
     lpath::String,
     cfg::CliConfig,
-    raw_temp::Bool,
 )
     j1 > j2 && return
     k_part_writer = init_pose_writer(
@@ -3122,14 +2571,8 @@ function write_center_lookup_and_k_range!(
         write_keyuid_to_bytes!(lookup_bytes, p, ka, uid)
         p += 12
     end
-    if raw_temp
-        open(lpath, "w") do lio
-            write(lio, lookup_bytes)
-        end
-    else
-        open_zstd_writer(lpath; single_thread = zstd_should_use_single_thread(length(lookup_bytes))) do lio
-            write(lio, lookup_bytes)
-        end
+    open_zstd_writer(lpath; single_thread = zstd_should_use_single_thread(length(lookup_bytes))) do lio
+        write(lio, lookup_bytes)
     end
     finish_pose_writer!(k_part_writer)
 end
@@ -3141,7 +2584,6 @@ function write_center_lookup_and_k_parallel!(
     part_dir::String,
     lpath::String,
     cfg::CliConfig,
-    raw_temp::Bool,
 )
     n = length(keys)
     chunk_rows = center_inner_pass2_chunk_rows()
@@ -3158,7 +2600,7 @@ function write_center_lookup_and_k_parallel!(
             sub_dir = joinpath(part_dir, @sprintf("chunk-%03d", c))
             mkpath(sub_dir)
             sub_lookup = lpath * @sprintf(".part%03d", c)
-            write_center_lookup_and_k_range!(keys, j1, j2, center, base, sub_dir, sub_lookup, cfg, raw_temp)
+            write_center_lookup_and_k_range!(keys, j1, j2, center, base, sub_dir, sub_lookup, cfg)
             sub_dirs[c] = sub_dir
             sub_lookup_paths[c] = sub_lookup
         end
@@ -3199,38 +2641,21 @@ function build_unique_k_and_lookup!(
     shared_confrot_mask_in::Union{Nothing, Vector{UInt64}} = nothing,
 )::Tuple{UInt64, Dict{NTuple{3, Int16}, String}}
     mkpath(lookup_dir)
-    raw_temp = use_raw_temp_files()
-    inter_ext = raw_temp ? "" : ".zst"
-    lookup_ext = raw_temp ? "" : ".zst"
+    inter_ext = ".zst"
+    lookup_ext = ".zst"
 
     centers_a = collect_center_keys(index_a)
     centers_b = collect_center_keys(index_b)
     common = sort!(collect(intersect(centers_a, centers_b)))
     ncommon = length(common)
     confrot_shared_mask::Union{Nothing, Vector{UInt64}} = shared_confrot_mask_in
-    local_confrot_prefilter = false
     if confrot_shared_mask !== nothing
         println("stage:mark unique-k-confrot-prefilter-reuse")
-    elseif enable_global_confrot_prefilter()
-        force_global = let raw = get(ENV, "CROCODILE_CONFROT_FORCE_GLOBAL", "0")
-            raw in ("1", "true", "TRUE", "yes", "YES")
-        end
-        min_rows_global = try
-            max(1, parse(Int, get(ENV, "CROCODILE_CONFROT_GLOBAL_MIN_ROWS", "1500000000")))
-        catch
-            1_500_000_000
-        end
-        total_rows_est = index_a.total_poses + index_b.total_poses
-        use_global = force_global || (total_rows_est >= UInt64(min_rows_global))
-        if use_global
-            println("stage:mark unique-k-confrot-prefilter-start")
-            confrot_shared_mask, uniq_confrot_a, shared_confrot = build_global_confrot_shared_mask(index_a, index_b)
-            println("unique-k confrot prefilter: unique-A=$uniq_confrot_a shared=$shared_confrot")
-            println("stage:mark unique-k-confrot-prefilter-end")
-        else
-            local_confrot_prefilter = true
-            println("stage:mark unique-k-confrot-prefilter-center-local")
-        end
+    else
+        println("stage:mark unique-k-confrot-prefilter-start")
+        confrot_shared_mask, uniq_confrot_a, shared_confrot = build_global_confrot_shared_mask(index_a, index_b)
+        println("unique-k confrot prefilter: unique-A=$uniq_confrot_a shared=$shared_confrot")
+        println("stage:mark unique-k-confrot-prefilter-end")
     end
     lookup_paths = Dict{NTuple{3, Int16}, String}()
     inter_dir = joinpath(lookup_dir, "_intersections")
@@ -3259,19 +2684,14 @@ function build_unique_k_and_lookup!(
                         center;
                         allow_inner_parallel = (ncommon == 1),
                         shared_confrot_mask = confrot_shared_mask,
-                        local_confrot_prefilter = local_confrot_prefilter,
                     )
                     if !isempty(keys)
                         p = joinpath(inter_dir, center_key_filename(center) * inter_ext)
-                        if raw_temp
-                            write_u64_records_raw(p, keys)
-                        else
-                            write_u64_records_zst(
-                                p,
-                                keys;
-                                single_thread = zstd_should_use_single_thread(length(keys) * 8),
-                            )
-                        end
+                        write_u64_records_zst(
+                            p,
+                            keys;
+                            single_thread = zstd_should_use_single_thread(length(keys) * 8),
+                        )
                         inter_paths[i] = p
                         inter_counts[i] = UInt64(length(keys))
                     end
@@ -3335,7 +2755,7 @@ function build_unique_k_and_lookup!(
                                       length(keys) >= center_inner_pass2_min_rows() &&
                                       inter_counts[i] >= avg_per_thread
                         if inner_pass2
-                            write_center_lookup_and_k_parallel!(keys, center, base, part_dir, lpath, cfg, raw_temp)
+                            write_center_lookup_and_k_parallel!(keys, center, base, part_dir, lpath, cfg)
                         else
                             write_center_lookup_and_k_range!(
                                 keys,
@@ -3346,7 +2766,6 @@ function build_unique_k_and_lookup!(
                                 part_dir,
                                 lpath,
                                 cfg,
-                                raw_temp,
                             )
                         end
                         part_dirs[i] = part_dir
@@ -3714,7 +3133,6 @@ function build_lookup_from_existing_unique_k!(
     lookup_dir::String,
 )::Tuple{UInt64, Dict{NTuple{3, Int16}, String}}
     mkpath(lookup_dir)
-    raw_temp = use_raw_temp_files()
     tmp_paths = Dict{NTuple{3, Int16}, String}()
     uid_next = UInt64(0)
     for pair in unique_pairs
@@ -3746,352 +3164,20 @@ function build_lookup_from_existing_unique_k!(
         for (center, buf) in local_bufs
             path = get(tmp_paths, center, "")
             if isempty(path)
-                path = joinpath(lookup_dir, center_key_filename(center))
+                path = joinpath(lookup_dir, center_key_filename(center) * ".zst")
                 tmp_paths[center] = path
             end
             open(path, "a") do io
-                write(io, buf)
+                write(io, compress_bytes_zst(buf))
             end
         end
     end
 
     lookup_paths = Dict{NTuple{3, Int16}, String}()
-    if raw_temp
-        for (center, path) in tmp_paths
-            lookup_paths[center] = path
-        end
-    else
-        for (center, path) in tmp_paths
-            lookup_paths[center] = compress_file_zst_inplace(path)
-        end
+    for (center, path) in tmp_paths
+        lookup_paths[center] = path
     end
     return uid_next, lookup_paths
-end
-
-function discover_prefix_npy(dir::String, prefix::String)::Vector{Tuple{Int, String}}
-    files = Tuple{Int, String}[]
-    for name in readdir(dir)
-        startswith(name, "$prefix-") || continue
-        endswith(name, ".npy") || continue
-        text = name[(length(prefix) + 2):(end - 4)]
-        all(isdigit, text) || continue
-        idx = parse(Int, text)
-        push!(files, (idx, joinpath(dir, name)))
-    end
-    sort!(files, by = x -> x[1])
-    return files
-end
-
-function dedup_k_and_rewrite_ind_a!(
-    raw_k_dir::String,
-    raw_ind_a_dir::String,
-    final_outdir::String,
-    cfg::CliConfig,
-    pending::Union{Nothing, PendingRawK},
-)::UInt64
-    bucket_dir = mktempdir(joinpath(final_outdir, "_tmp"); prefix = "k-buckets-")
-    map_dir = mktempdir(joinpath(final_outdir, "_tmp"); prefix = "k-maps-")
-    nb = cfg.dedup_buckets
-
-    bucket_paths = [joinpath(bucket_dir, @sprintf("bucket-%05d.bin", i)) for i in 0:(nb - 1)]
-    bucket_ios = [open(p, "w") for p in bucket_paths]
-
-    old_k_count = UInt64(0)
-    if pending !== nothing
-        kp = pending::PendingRawK
-        n = length(kp.conf)
-        length(kp.rot) == n || error("Pending K shape mismatch")
-        length(kp.x) == n || error("Pending K shape mismatch")
-        length(kp.y) == n || error("Pending K shape mismatch")
-        length(kp.z) == n || error("Pending K shape mismatch")
-        length(kp.aidx) == n || error("Pending KI shape mismatch")
-        @inbounds for i in 1:n
-            old_k_count <= UInt64(typemax(UInt32)) || error("K index exceeds uint32 range")
-            rec = BucketRecord(
-                kp.conf[i],
-                kp.rot[i],
-                kp.x[i],
-                kp.y[i],
-                kp.z[i],
-                UInt32(old_k_count),
-            )
-            b = Int(key_hash(rec.conf, rec.rot, rec.x, rec.y, rec.z) & UInt64(nb - 1)) + 1
-            write_bucket_record(bucket_ios[b], rec)
-            old_k_count += 1
-        end
-    else
-        raw_k_pairs = PairInfo[]
-        try
-            raw_k_pairs = discover_pose_pairs(raw_k_dir)
-        catch err
-            if !occursin("No pose files found", sprint(showerror, err))
-                rethrow(err)
-            end
-        end
-        for pair in raw_k_pairs
-            lp = load_pair(pair)
-            n = length(lp.conf)
-            @inbounds for i in 1:n
-                old_k_count <= UInt64(typemax(UInt32)) || error("K index exceeds uint32 range")
-                oi = Int(lp.offidx[i]) + 1
-                rec = BucketRecord(
-                    lp.conf[i],
-                    lp.rot[i],
-                    lp.abs_offsets[oi, 1],
-                    lp.abs_offsets[oi, 2],
-                    lp.abs_offsets[oi, 3],
-                    UInt32(old_k_count),
-                )
-                b = Int(key_hash(rec.conf, rec.rot, rec.x, rec.y, rec.z) & UInt64(nb - 1)) + 1
-                write_bucket_record(bucket_ios[b], rec)
-                old_k_count += 1
-            end
-        end
-    end
-    for io in bucket_ios
-        close(io)
-    end
-
-    unique_writer = init_pose_writer(
-        final_outdir;
-        start_index = 1,
-        max_poses_per_chunk = cfg.max_poses_per_chunk,
-        write_empty_if_none = true,
-    )
-    next_unique = UInt32(0)
-    map_paths = String[]
-
-    for b in 1:nb
-        path = bucket_paths[b]
-        isfile(path) || continue
-        sz = stat(path).size
-        sz == 0 && continue
-        sz % 14 == 0 || error("Corrupt bucket file size: $path")
-        bytes = read(path)
-        n = Int(sz ÷ 14)
-        recs = Vector{BucketRecord}(undef, n)
-        p = 1
-        @inbounds for i in 1:n
-            recs[i] = read_bucket_record(bytes, p)
-            p += 14
-        end
-
-        sort!(recs, by = r -> (r.conf, r.rot, r.x, r.y, r.z, r.old_idx))
-        maps = MapRecord[]
-        sizehint!(maps, n)
-
-        i = 1
-        while i <= n
-            r0 = recs[i]
-            key = (r0.conf, r0.rot, r0.x, r0.y, r0.z)
-            uid = next_unique
-            add_pose!(unique_writer, r0.conf, r0.rot, r0.x, r0.y, r0.z)
-            next_unique += UInt32(1)
-            while i <= n
-                r = recs[i]
-                if (r.conf, r.rot, r.x, r.y, r.z) != key
-                    break
-                end
-                push!(maps, MapRecord(r.old_idx, uid))
-                i += 1
-            end
-        end
-
-        sort!(maps, by = m -> m.old_idx)
-        map_path = joinpath(map_dir, @sprintf("map-%05d.bin", b - 1))
-        open(map_path, "w") do io
-            @inbounds for m in maps
-                write_map_record(io, m)
-            end
-        end
-        push!(map_paths, map_path)
-    end
-    finish_pose_writer!(unique_writer)
-
-    function heap_push!(heap::Vector{HeapNode}, node::HeapNode)
-        push!(heap, node)
-        i = length(heap)
-        while i > 1
-            p = i >>> 1
-            if heap[p].old_idx <= heap[i].old_idx
-                break
-            end
-            heap[p], heap[i] = heap[i], heap[p]
-            i = p
-        end
-    end
-
-    function heap_pop!(heap::Vector{HeapNode})::HeapNode
-        isempty(heap) && error("heap_pop! on empty heap")
-        out = heap[1]
-        last = pop!(heap)
-        if !isempty(heap)
-            heap[1] = last
-            i = 1
-            while true
-                l = i << 1
-                r = l + 1
-                smallest = i
-                if l <= length(heap) && heap[l].old_idx < heap[smallest].old_idx
-                    smallest = l
-                end
-                if r <= length(heap) && heap[r].old_idx < heap[smallest].old_idx
-                    smallest = r
-                end
-                smallest == i && break
-                heap[i], heap[smallest] = heap[smallest], heap[i]
-                i = smallest
-            end
-        end
-        return out
-    end
-
-    map_ios = IO[]
-    for p in map_paths
-        push!(map_ios, open(p, "r"))
-    end
-    heap = HeapNode[]
-    for (src, io) in enumerate(map_ios)
-        eof(io) && continue
-        buf = read(io, 8)
-        length(buf) == 8 || error("Corrupt map record in $(map_paths[src])")
-        rec = read_map_record(buf, 1)
-        heap_push!(heap, HeapNode(rec.old_idx, rec.uniq_idx, src))
-    end
-
-    merged_uidx_path = joinpath(map_dir, "old-to-uniq.bin")
-    open(merged_uidx_path, "w") do out
-        expect = UInt64(0)
-        while !isempty(heap)
-            node = heap_pop!(heap)
-            UInt64(node.old_idx) == expect || error("Map merge is not contiguous at old index $expect")
-            write_le_u32(out, node.uniq_idx)
-            expect += 1
-
-            io = map_ios[node.src]
-            if !eof(io)
-                buf = read(io, 8)
-                length(buf) == 8 || error("Corrupt map record in $(map_paths[node.src])")
-                rec = read_map_record(buf, 1)
-                heap_push!(heap, HeapNode(rec.old_idx, rec.uniq_idx, node.src))
-            end
-        end
-        expect == old_k_count || error("Missing map rows: expected $old_k_count, saw $expect")
-    end
-    for io in map_ios
-        close(io)
-    end
-
-    ind_a_writer = init_index_writer(final_outdir, "ind-A"; start_index = 1, ncols = 2, flush_rows = cfg.threshold_k)
-    merged_io = open(merged_uidx_path, "r")
-    produced = UInt64(0)
-    if pending !== nothing
-        kp = pending::PendingRawK
-        n = length(kp.aidx)
-        col1 = copy(kp.aidx)
-        col2 = Vector{UInt32}(undef, n)
-        @inbounds for i in 1:n
-            eof(merged_io) && error("Not enough old->unique map entries")
-            b = read(merged_io, 4)
-            length(b) == 4 || error("Corrupt old-to-uniq mapping")
-            col2[i] = read_le_u32(b, 1)
-            produced += 1
-        end
-        add_index2!(ind_a_writer, col1, col2)
-    else
-        raw_ind_files = discover_prefix_npy(raw_ind_a_dir, "ind-A")
-        for (_, path) in raw_ind_files
-            arr = read_npy_u32(path)
-            ndims(arr) == 2 || error("Expected 2D ind-A raw file: $path")
-            size(arr, 2) == 1 || error("Expected ind-A raw with one column: $path")
-            n = size(arr, 1)
-            col1 = Vector{UInt32}(undef, n)
-            col2 = Vector{UInt32}(undef, n)
-            @inbounds for i in 1:n
-                col1[i] = arr[i, 1]
-                eof(merged_io) && error("Not enough old->unique map entries")
-                b = read(merged_io, 4)
-                length(b) == 4 || error("Corrupt old-to-uniq mapping")
-                col2[i] = read_le_u32(b, 1)
-                produced += 1
-            end
-            add_index2!(ind_a_writer, col1, col2)
-        end
-    end
-    eof(merged_io) || error("old-to-uniq mapping has extra entries")
-    close(merged_io)
-    finish_index_writer!(ind_a_writer)
-    produced == old_k_count || error("ind-A row count mismatch with K rows")
-
-    rm(bucket_dir; recursive = true, force = true)
-    rm(map_dir; recursive = true, force = true)
-    return unique_writer.total_written
-end
-
-function run_second_pass!(
-    a_pairs::Vector{PairInfo},
-    b_pairs::Vector{PairInfo},
-    outdir::String,
-    cfg::CliConfig,
-)
-    starts = Vector{UInt32}(undef, length(b_pairs))
-    cursor = UInt64(0)
-    for (i, p) in enumerate(b_pairs)
-        cursor <= UInt64(typemax(UInt32)) || error("Unique-K index exceeds uint32 range")
-        starts[i] = UInt32(cursor)
-        cursor += UInt64(pose_row_count(p.pose_path))
-    end
-    cursor <= UInt64(typemax(UInt32)) + UInt64(1) || error("Unique-K index exceeds uint32 range")
-
-    ib_writer = init_index_writer(outdir, "ind-B"; start_index = 1, ncols = 2, flush_rows = cfg.threshold_k)
-    buf_bidx = UInt32[]
-    buf_uidx = UInt32[]
-    reserve = Dict{Int, ActivePool}()
-    a_counter = UInt64(0)
-
-    for aa in a_pairs
-        aa_loaded = load_pair(aa)
-        active = init_active_pool()
-        add_new_aa_to_active!(active, aa_loaded, a_counter)
-
-        for (bb_i, bb) in enumerate(b_pairs)
-            if haskey(reserve, bb_i)
-                append_active!(active, reserve[bb_i])
-                delete!(reserve, bb_i)
-            end
-            active_length(active) == 0 && continue
-
-            bb_loaded = load_pair(bb)
-            b_lookup = make_blookup_second(bb_loaded, starts[bb_i])
-            matched = match_active_second_pass!(active, b_lookup)
-
-            if !isempty(matched.aidx)
-                append!(buf_bidx, matched.aidx)
-                append!(buf_uidx, matched.uniq_idx)
-            end
-
-            if length(buf_bidx) >= cfg.threshold_k
-                add_index2!(ib_writer, buf_bidx, buf_uidx)
-                empty!(buf_bidx)
-                empty!(buf_uidx)
-            end
-
-            # Note 1: do not reserve/break on the last BB pair.
-            if active_length(active) < cfg.threshold_m && bb_i < length(b_pairs)
-                reserve_push!(reserve, bb_i, active)
-                clear_active!(active)
-                break
-            end
-        end
-
-        clear_active!(active)
-        a_counter += UInt64(length(aa_loaded.conf))
-    end
-
-    if !isempty(buf_bidx)
-        add_index2!(ib_writer, buf_bidx, buf_uidx)
-    end
-    finish_index_writer!(ib_writer)
 end
 
 function sum_pose_file_sizes(pairs::Vector{PairInfo})::Int64

@@ -1,10 +1,48 @@
 import io
+from collections import deque
 from pathlib import Path
 import tempfile
 
 import numpy as np
 
 from offsets import expand_discrete_offsets, gather_discrete_offsets
+
+
+def canonical_center_coord(v: np.ndarray | int) -> np.ndarray | int:
+    if isinstance(v, np.ndarray):
+        out = ((v.astype(np.int32) + 128) // 256) * 256
+        if out.size and (
+            out.min() < np.iinfo(np.int16).min or out.max() > np.iinfo(np.int16).max
+        ):
+            raise ValueError("canonical center out of int16 range")
+        return out.astype(np.int16, copy=False)
+    out = ((int(v) + 128) // 256) * 256
+    if out < np.iinfo(np.int16).min or out > np.iinfo(np.int16).max:
+        raise ValueError("canonical center out of int16 range")
+    return out
+
+
+def canonical_center_tuple(xyz: np.ndarray) -> tuple[int, int, int]:
+    x = int(canonical_center_coord(int(xyz[0])))
+    y = int(canonical_center_coord(int(xyz[1])))
+    z = int(canonical_center_coord(int(xyz[2])))
+    return x, y, z
+
+
+def canonical_center_codes(translations: np.ndarray) -> np.ndarray:
+    if len(translations) == 0:
+        return np.empty((0,), dtype=np.uint32)
+    translations = np.asarray(translations, dtype=np.int16)
+    if translations.ndim != 2 or translations.shape[1] != 3:
+        raise ValueError("translations must be a [N,3] array")
+    cc = np.empty_like(translations, dtype=np.int16)
+    cc[:, 0] = canonical_center_coord(translations[:, 0])
+    cc[:, 1] = canonical_center_coord(translations[:, 1])
+    cc[:, 2] = canonical_center_coord(translations[:, 2])
+    cx = ((cc[:, 0].astype(np.int32) + 32768) >> 8).astype(np.uint32)
+    cy = ((cc[:, 1].astype(np.int32) + 32768) >> 8).astype(np.uint32)
+    cz = ((cc[:, 2].astype(np.int32) + 32768) >> 8).astype(np.uint32)
+    return (cx << np.uint32(16)) | (cy << np.uint32(8)) | cz
 
 
 def _as_uint16_array(name: str, arr: np.ndarray) -> np.ndarray:
@@ -232,6 +270,7 @@ class PoseStreamAccumulator:
         outdir: str | Path,
         *,
         max_poses_per_chunk: int = 2**32,
+        canonical_centers: bool = True,
     ) -> None:
         self._outdir = Path(outdir)
         self._max_poses_per_chunk = int(max_poses_per_chunk)
@@ -239,6 +278,7 @@ class PoseStreamAccumulator:
             raise ValueError("max_poses_per_chunk must be positive")
         if self._max_poses_per_chunk > 2**32:
             raise ValueError("max_poses_per_chunk must be <= 2**32")
+        self._canonical_centers = bool(canonical_centers)
         self._chunk_index = 1
         self._written_chunks: list[tuple[Path, Path]] = []
         self._pose_count = 0
@@ -248,6 +288,7 @@ class PoseStreamAccumulator:
         self._offsets: list[np.ndarray] = []
         self._min_xyz: np.ndarray | None = None
         self._max_xyz: np.ndarray | None = None
+        self._chunk_center: tuple[int, int, int] | None = None
 
     def _new_tempfile(self) -> None:
         self._tmp = tempfile.NamedTemporaryFile(
@@ -294,6 +335,7 @@ class PoseStreamAccumulator:
         conformer_indices: np.ndarray,
         rotamer_indices: np.ndarray,
         translations: np.ndarray,
+        center: tuple[int, int, int],
     ) -> bool:
         conf = _as_uint16_array("conformer_indices", conformer_indices)
         rot = _as_uint16_array("rotamer_indices", rotamer_indices)
@@ -310,6 +352,12 @@ class PoseStreamAccumulator:
 
         if self._pose_count + len(translations) > self._max_poses_per_chunk:
             return False
+
+        if self._canonical_centers:
+            if self._chunk_center is None:
+                self._chunk_center = center
+            elif center != self._chunk_center:
+                return False
 
         translations_c = np.ascontiguousarray(translations, dtype=np.int16)
         packed_dtype = np.dtype((np.void, translations_c.dtype.itemsize * 3))
@@ -375,22 +423,52 @@ class PoseStreamAccumulator:
         rotamer_indices: np.ndarray,
         translations: np.ndarray,
     ) -> None:
-        queue = [(conformer_indices, rotamer_indices, translations)]
+        queue = deque([(conformer_indices, rotamer_indices, translations, None)])
         while queue:
-            conf, rot, trans = queue.pop(0)
+            conf, rot, trans, center = queue.popleft()
             if len(trans) == 0:
                 continue
-            if self._try_add_batch(conf, rot, trans):
+            conf = _as_uint16_array("conformer_indices", conf)
+            rot = _as_uint16_array("rotamer_indices", rot)
+            if conf.shape != rot.shape:
+                raise ValueError("conformer_indices and rotamer_indices must have same shape")
+            trans = np.asarray(trans, dtype=np.int16)
+            if trans.ndim != 2 or trans.shape[1] != 3:
+                raise ValueError("translations must be a [N,3] array")
+            if len(trans) != len(conf):
+                raise ValueError("translations length must match conformer/rotamer indices")
+
+            if self._canonical_centers and center is None:
+                codes = canonical_center_codes(trans)
+                if len(codes) > 1 and np.any(codes[1:] != codes[0]):
+                    order = np.argsort(codes, kind="stable")
+                    sorted_codes = codes[order]
+                    boundaries = np.flatnonzero(sorted_codes[1:] != sorted_codes[:-1]) + 1
+                    starts = np.concatenate(([0], boundaries))
+                    stops = np.concatenate((boundaries, [len(order)]))
+                    subbatches = []
+                    for start, stop in zip(starts, stops):
+                        idx = order[start:stop]
+                        center_i = canonical_center_tuple(trans[idx[0]])
+                        subbatches.append((conf[idx], rot[idx], trans[idx], center_i))
+                    queue.extendleft(reversed(subbatches))
+                    continue
+                center = canonical_center_tuple(trans[0])
+
+            if center is None:
+                center = canonical_center_tuple(trans[0])
+
+            if self._try_add_batch(conf, rot, trans, center):
                 continue
             if self._pose_count > 0:
                 self._flush_current()
-                queue.insert(0, (conf, rot, trans))
+                queue.appendleft((conf, rot, trans, center))
             else:
                 if len(trans) == 1:
                     raise ValueError("Single pose violates packing constraints")
                 mid = len(trans) // 2
-                queue.insert(0, (conf[mid:], rot[mid:], trans[mid:]))
-                queue.insert(0, (conf[:mid], rot[:mid], trans[:mid]))
+                queue.appendleft((conf[mid:], rot[mid:], trans[mid:], center))
+                queue.appendleft((conf[:mid], rot[:mid], trans[:mid], center))
 
     def _flush_current(self) -> None:
         if self._pose_count == 0:
@@ -420,11 +498,23 @@ class PoseStreamAccumulator:
         del poses_mmap
 
         offsets_arr = np.array(self._offsets, dtype=np.int16)
-        max_xyz = offsets_arr.max(axis=0).astype(np.int32)
-        mean_offset = np.clip(max_xyz - 127, -32768, 32767).astype(np.int16)
-        offsets_int8 = (offsets_arr - mean_offset).astype(np.int8)
-        if offsets_int8.max() > 127 or offsets_int8.min() < -128:
-            raise ValueError("Offsets exceed int8 range after mean subtraction")
+        if self._canonical_centers:
+            if self._chunk_center is None:
+                raise ValueError("Missing canonical chunk center while flushing poses")
+            mean_offset = np.array(self._chunk_center, dtype=np.int16)
+            centered = offsets_arr.astype(np.int32) - mean_offset.astype(np.int32)
+            if centered.size and (
+                centered.min() < np.iinfo(np.int8).min
+                or centered.max() > np.iinfo(np.int8).max
+            ):
+                raise ValueError("Offsets exceed int8 range for canonical center")
+            offsets_int8 = centered.astype(np.int8, copy=False)
+        else:
+            max_xyz = offsets_arr.max(axis=0).astype(np.int32)
+            mean_offset = np.clip(max_xyz - 127, -32768, 32767).astype(np.int16)
+            offsets_int8 = (offsets_arr - mean_offset).astype(np.int8)
+            if offsets_int8.max() > 127 or offsets_int8.min() < -128:
+                raise ValueError("Offsets exceed int8 range after mean subtraction")
         _write_offsets_file(offsets_path, mean_offset, offsets_int8.view(np.uint8))
 
         self._written_chunks.append((poses_path, offsets_path))
@@ -434,6 +524,7 @@ class PoseStreamAccumulator:
         self._offsets = []
         self._min_xyz = None
         self._max_xyz = None
+        self._chunk_center = None
         self.cleanup()
         self._new_tempfile()
 
