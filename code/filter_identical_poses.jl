@@ -16,6 +16,10 @@ struct CliConfig
     dedup_buckets::Int
     keep_temp::Bool
     reuse_unique_k_dir::Union{Nothing, String}
+    stop_after_unique_k::Bool
+    phase1_zstd_threads::Union{Nothing, Int}
+    map_zstd_threads::Union{Nothing, Int}
+    map_workers::Int
 end
 
 struct PairInfo
@@ -109,6 +113,7 @@ end
 mutable struct CanonicalSetIndex
     pairs_by_center::Dict{NTuple{3, Int16}, Vector{PairWithStart}}
     bucket_by_center::Dict{NTuple{3, Int16}, Vector{String}}
+    map_bucket_by_center::Dict{NTuple{3, Int16}, Vector{String}}
     total_poses::UInt64
     temp_bytes::UInt64
 end
@@ -176,6 +181,10 @@ function usage()
           --dedup-buckets <int>       Power-of-two bucket count for K uniqueness (default: 256)
           --keep-temp                 Keep temporary files under <output>/_tmp for inspection
           --reuse-unique-k-dir <dir>  Skip prefilter/canonicalization/unique-k and reuse existing unique-K poses
+          --stop-after-unique-k       Stop after writing unique-K poses (skip map-a/map-b)
+          --phase1-zstd-threads <n>   zstd threads for prefilter/canonicalization/unique-k (default: CROCODILE_ZSTD_THREADS)
+          --map-zstd-threads <n>      zstd threads for map-a/map-b stages (default: CROCODILE_ZSTD_THREADS)
+          --map-workers <n>           Julia worker tasks for map-a/map-b (0 means auto: no-HT equivalent)
           -h, --help                  Show help
         """
     )
@@ -201,6 +210,10 @@ function parse_args(argv::Vector{String})::CliConfig
     dedup_buckets = 256
     keep_temp = false
     reuse_unique_k_dir = nothing
+    stop_after_unique_k = false
+    phase1_zstd_threads = nothing
+    map_zstd_threads = nothing
+    map_workers = 0
 
     i = 4
     while i <= length(argv)
@@ -234,6 +247,25 @@ function parse_args(argv::Vector{String})::CliConfig
             reuse_unique_k_dir = argv[i + 1]
             i += 2
             continue
+        elseif arg == "--stop-after-unique-k"
+            stop_after_unique_k = true
+            i += 1
+            continue
+        elseif arg == "--phase1-zstd-threads"
+            i + 1 <= length(argv) || error("--phase1-zstd-threads requires a value")
+            phase1_zstd_threads = parse(Int, argv[i + 1])
+            i += 2
+            continue
+        elseif arg == "--map-zstd-threads"
+            i + 1 <= length(argv) || error("--map-zstd-threads requires a value")
+            map_zstd_threads = parse(Int, argv[i + 1])
+            i += 2
+            continue
+        elseif arg == "--map-workers"
+            i + 1 <= length(argv) || error("--map-workers requires a value")
+            map_workers = parse(Int, argv[i + 1])
+            i += 2
+            continue
         else
             error("Unknown argument: $arg")
         end
@@ -244,6 +276,9 @@ function parse_args(argv::Vector{String})::CliConfig
     max_poses_per_chunk > 0 || error("--max-poses-per-chunk must be positive")
     dedup_buckets > 0 || error("--dedup-buckets must be positive")
     (dedup_buckets & (dedup_buckets - 1)) == 0 || error("--dedup-buckets must be a power of two")
+    phase1_zstd_threads === nothing || phase1_zstd_threads >= 0 || error("--phase1-zstd-threads must be >= 0")
+    map_zstd_threads === nothing || map_zstd_threads >= 0 || error("--map-zstd-threads must be >= 0")
+    map_workers >= 0 || error("--map-workers must be >= 0")
 
     return CliConfig(
         set1,
@@ -255,7 +290,62 @@ function parse_args(argv::Vector{String})::CliConfig
         dedup_buckets,
         keep_temp,
         reuse_unique_k_dir,
+        stop_after_unique_k,
+        phase1_zstd_threads,
+        map_zstd_threads,
+        map_workers,
     )
+end
+
+function has_smt_siblings_linux()::Union{Nothing, Bool}
+    cpu_dirs = filter(p -> isdir(p), readdir("/sys/devices/system/cpu"; join = true))
+    sib_sizes = Int[]
+    for d in cpu_dirs
+        startswith(basename(d), "cpu") || continue
+        isdigit(last(basename(d))) || continue
+        p = joinpath(d, "topology", "thread_siblings_list")
+        isfile(p) || continue
+        txt = try
+            strip(read(p, String))
+        catch
+            continue
+        end
+        isempty(txt) && continue
+        n = 0
+        for chunk in split(txt, ",")
+            c = strip(chunk)
+            if occursin("-", c)
+                a, b = split(c, "-"; limit = 2)
+                n += parse(Int, b) - parse(Int, a) + 1
+            else
+                n += 1
+            end
+        end
+        n > 0 && push!(sib_sizes, n)
+    end
+    isempty(sib_sizes) && return nothing
+    return maximum(sib_sizes) > 1
+end
+
+function auto_map_workers_noht()::Int
+    logical = Threads.nthreads()
+    logical <= 1 && return 1
+    fallback = cld(logical, 2)  # ceil(logical/2)
+    smt = has_smt_siblings_linux()
+    if smt === false
+        # No SMT: use all available Julia threads.
+        return logical
+    end
+    # SMT enabled or unknown/nonsense: use no-HT fallback.
+    return max(1, fallback)
+end
+
+function resolved_map_workers(map_workers::Int)::Int
+    if map_workers > 0
+        return max(1, min(map_workers, Threads.nthreads()))
+    end
+    auto = auto_map_workers_noht()
+    return max(1, min(auto, Threads.nthreads()))
 end
 
 function read_le_u16(bytes::Vector{UInt8}, pos::Int)::UInt16
@@ -368,6 +458,22 @@ end
         (UInt64(reinterpret(UInt8, rx)) << 32) |
         (UInt64(reinterpret(UInt8, ry)) << 40) |
         (UInt64(reinterpret(UInt8, rz)) << 48)
+    )
+end
+
+@inline function pack_abs_pose_key(
+    conf::UInt16,
+    rot::UInt16,
+    x::Int16,
+    y::Int16,
+    z::Int16,
+)::UInt128
+    return (
+        UInt128(conf) |
+        (UInt128(rot) << 16) |
+        (UInt128(reinterpret(UInt16, x)) << 32) |
+        (UInt128(reinterpret(UInt16, y)) << 48) |
+        (UInt128(reinterpret(UInt16, z)) << 64)
     )
 end
 
@@ -749,7 +855,34 @@ function write_npy_u64_2cols(path::String, col1::Vector{UInt64}, col2::Vector{UI
     end
 end
 
+const RUNTIME_STAGE = Ref(:phase1)
+const RUNTIME_ZSTD_THREADS_PHASE1 = Ref{Int}(-1)
+const RUNTIME_ZSTD_THREADS_MAP = Ref{Int}(-1)
+
+function set_runtime_stage!(stage::Symbol)
+    RUNTIME_STAGE[] = stage
+end
+
+function set_runtime_zstd_overrides!(
+    phase1_threads::Union{Nothing, Int},
+    map_threads::Union{Nothing, Int},
+)
+    RUNTIME_ZSTD_THREADS_PHASE1[] = phase1_threads === nothing ? -1 : phase1_threads::Int
+    RUNTIME_ZSTD_THREADS_MAP[] = map_threads === nothing ? -1 : map_threads::Int
+end
+
 function zstd_thread_count()::Int
+    if RUNTIME_STAGE[] == :map
+        v = RUNTIME_ZSTD_THREADS_MAP[]
+        if v >= 0
+            return v
+        end
+    else
+        v = RUNTIME_ZSTD_THREADS_PHASE1[]
+        if v >= 0
+            return v
+        end
+    end
     zstd_threads = try
         parse(Int, get(ENV, "CROCODILE_ZSTD_THREADS", "0"))
     catch
@@ -929,6 +1062,47 @@ function load_offsets_dat(path::String)
         p += 3
     end
     return (Int16(c1), Int16(c2), Int16(c3)), rel, abs
+end
+
+function load_offsets_center_rel(path::String)::Tuple{NTuple{3, Int16}, Matrix{Int8}}
+    bytes = read(path)
+    length(bytes) >= 6 || error("offset file too small: $path")
+    c1 = u16_to_i16(read_le_u16(bytes, 1))
+    c2 = u16_to_i16(read_le_u16(bytes, 3))
+    c3 = u16_to_i16(read_le_u16(bytes, 5))
+    rem = length(bytes) - 6
+    rem % 3 == 0 || error("offset file payload length must be divisible by 3: $path")
+    n = rem ÷ 3
+    rel = Matrix{Int8}(undef, n, 3)
+    p = 7
+    @inbounds for i in 1:n
+        rel[i, 1] = u8_to_i8(bytes[p])
+        rel[i, 2] = u8_to_i8(bytes[p + 1])
+        rel[i, 3] = u8_to_i8(bytes[p + 2])
+        p += 3
+    end
+    return (Int16(c1), Int16(c2), Int16(c3)), rel
+end
+
+function load_offsets_abskeys(path::String)::Vector{UInt64}
+    bytes = read(path)
+    length(bytes) >= 6 || error("offset file too small: $path")
+    c1 = u16_to_i16(read_le_u16(bytes, 1))
+    c2 = u16_to_i16(read_le_u16(bytes, 3))
+    c3 = u16_to_i16(read_le_u16(bytes, 5))
+    rem = length(bytes) - 6
+    rem % 3 == 0 || error("offset file payload length must be divisible by 3: $path")
+    n = rem ÷ 3
+    abs_keys = Vector{UInt64}(undef, n)
+    p = 7
+    @inbounds for i in 1:n
+        x = Int16(Int32(c1) + Int32(u8_to_i8(bytes[p])))
+        y = Int16(Int32(c2) + Int32(u8_to_i8(bytes[p + 1])))
+        z = Int16(Int32(c3) + Int32(u8_to_i8(bytes[p + 2])))
+        abs_keys[i] = pack_abs_xyz_key(x, y, z)
+        p += 3
+    end
+    return abs_keys
 end
 
 function read_offset_center(path::String)::NTuple{3, Int16}
@@ -1907,6 +2081,28 @@ function read_keyidx_records(path::String)::Vector{KeyIdxRecord}
     return out
 end
 
+function read_keyidx64_records(path::String; single_thread::Bool = false)::Tuple{Vector{UInt64}, Vector{UInt64}}
+    isfile(path) || return UInt64[], UInt64[]
+    bytes = if endswith(path, ".zst")
+        decompress_zst_bytes(path; single_thread = single_thread)
+    else
+        read(path)
+    end
+    sz = length(bytes)
+    sz == 0 && return UInt64[], UInt64[]
+    sz % 16 == 0 || error("Corrupt keyidx64 file size: $path")
+    n = Int(sz ÷ 16)
+    keys = Vector{UInt64}(undef, n)
+    idx = Vector{UInt64}(undef, n)
+    p = 1
+    @inbounds for i in 1:n
+        keys[i] = read_le_u64(bytes, p)
+        idx[i] = read_le_u64(bytes, p + 8)
+        p += 16
+    end
+    return keys, idx
+end
+
 function read_key_records(path::String; single_thread::Bool = false)::Vector{UInt64}
     isfile(path) || return UInt64[]
     bytes = if endswith(path, ".zst")
@@ -2081,6 +2277,7 @@ function init_canonical_set_index()::CanonicalSetIndex
     return CanonicalSetIndex(
         Dict{NTuple{3, Int16}, Vector{PairWithStart}}(),
         Dict{NTuple{3, Int16}, Vector{String}}(),
+        Dict{NTuple{3, Int16}, Vector{String}}(),
         UInt64(0),
         UInt64(0),
     )
@@ -2155,6 +2352,122 @@ function append_noncanonical_pair_to_local_buckets!(
     return temp_bytes
 end
 
+function append_pair_to_local_prefilter_buckets!(
+    local_key_paths::Dict{NTuple{3, Int16}, String},
+    local_map_paths::Dict{NTuple{3, Int16}, String},
+    tmpdir::String,
+    tid::Int,
+    pair::PairInfo,
+    pair_start::UInt64,
+    shared_confrot_mask::Vector{UInt64},
+)::UInt64
+    lp = load_pair(pair)
+    n = length(lp.conf)
+    n == length(lp.rot) || error("Malformed pair length mismatch: $(pair.pose_path)")
+    n == length(lp.offidx) || error("Malformed pair length mismatch: $(pair.pose_path)")
+
+    local_keys = Dict{NTuple{3, Int16}, Vector{UInt64}}()
+    local_idx = Dict{NTuple{3, Int16}, Vector{UInt64}}()
+
+    @inbounds for i in 1:n
+        conf = lp.conf[i]
+        rot = lp.rot[i]
+        bitset_has(shared_confrot_mask, pack_confrot(conf, rot)) || continue
+        oi = Int(lp.offidx[i]) + 1
+        x = lp.abs_offsets[oi, 1]
+        y = lp.abs_offsets[oi, 2]
+        z = lp.abs_offsets[oi, 3]
+        c = canonical_center(x, y, z)
+        rx32 = Int32(x) - Int32(c[1])
+        ry32 = Int32(y) - Int32(c[2])
+        rz32 = Int32(z) - Int32(c[3])
+        (rx32 >= -128 && rx32 <= 127 && ry32 >= -128 && ry32 <= 127 && rz32 >= -128 && rz32 <= 127) ||
+            error("Canonical rebasing failed for $(pair.pose_path)")
+        key = pack_rel_pose_key(conf, rot, Int8(rx32), Int8(ry32), Int8(rz32))
+        keys = get!(local_keys, c, UInt64[])
+        idx = get!(local_idx, c, UInt64[])
+        push!(keys, key)
+        push!(idx, pair_start + UInt64(i - 1))
+    end
+
+    temp_bytes = UInt64(0)
+    raw_temp = use_raw_temp_files()
+    for (center, keys) in local_keys
+        idx = local_idx[center]
+        length(idx) == length(keys) || error("Internal key/index length mismatch")
+        kpath = get(local_key_paths, center, "")
+        mpath = get(local_map_paths, center, "")
+        if isempty(kpath)
+            suffix = raw_temp ? ".bin" : ".zst"
+            kpath = joinpath(tmpdir, @sprintf("t%02d-%s%s", tid, center_key_filename(center), suffix))
+            local_key_paths[center] = kpath
+        end
+        if isempty(mpath)
+            suffix = raw_temp ? ".bin" : ".zst"
+            mpath = joinpath(tmpdir, @sprintf("t%02d-%s-idx64%s", tid, center_key_filename(center), suffix))
+            local_map_paths[center] = mpath
+        end
+
+        raw_keys = Vector{UInt8}(undef, length(keys) * 8)
+        p = 1
+        @inbounds for key in keys
+            raw_keys[p] = UInt8(key & 0x00000000000000ff)
+            raw_keys[p + 1] = UInt8((key >> 8) & 0x00000000000000ff)
+            raw_keys[p + 2] = UInt8((key >> 16) & 0x00000000000000ff)
+            raw_keys[p + 3] = UInt8((key >> 24) & 0x00000000000000ff)
+            raw_keys[p + 4] = UInt8((key >> 32) & 0x00000000000000ff)
+            raw_keys[p + 5] = UInt8((key >> 40) & 0x00000000000000ff)
+            raw_keys[p + 6] = UInt8((key >> 48) & 0x00000000000000ff)
+            raw_keys[p + 7] = UInt8((key >> 56) & 0x00000000000000ff)
+            p += 8
+        end
+
+        raw_map = Vector{UInt8}(undef, length(keys) * 16)
+        p = 1
+        @inbounds for i in eachindex(keys)
+            key = keys[i]
+            old = idx[i]
+            raw_map[p] = UInt8(key & 0x00000000000000ff)
+            raw_map[p + 1] = UInt8((key >> 8) & 0x00000000000000ff)
+            raw_map[p + 2] = UInt8((key >> 16) & 0x00000000000000ff)
+            raw_map[p + 3] = UInt8((key >> 24) & 0x00000000000000ff)
+            raw_map[p + 4] = UInt8((key >> 32) & 0x00000000000000ff)
+            raw_map[p + 5] = UInt8((key >> 40) & 0x00000000000000ff)
+            raw_map[p + 6] = UInt8((key >> 48) & 0x00000000000000ff)
+            raw_map[p + 7] = UInt8((key >> 56) & 0x00000000000000ff)
+            raw_map[p + 8] = UInt8(old & 0x00000000000000ff)
+            raw_map[p + 9] = UInt8((old >> 8) & 0x00000000000000ff)
+            raw_map[p + 10] = UInt8((old >> 16) & 0x00000000000000ff)
+            raw_map[p + 11] = UInt8((old >> 24) & 0x00000000000000ff)
+            raw_map[p + 12] = UInt8((old >> 32) & 0x00000000000000ff)
+            raw_map[p + 13] = UInt8((old >> 40) & 0x00000000000000ff)
+            raw_map[p + 14] = UInt8((old >> 48) & 0x00000000000000ff)
+            raw_map[p + 15] = UInt8((old >> 56) & 0x00000000000000ff)
+            p += 16
+        end
+
+        if raw_temp
+            open(kpath, "a") do io
+                write(io, raw_keys)
+            end
+            open(mpath, "a") do io
+                write(io, raw_map)
+            end
+        else
+            zkeys = compress_bytes_zst(raw_keys)
+            zmap = compress_bytes_zst(raw_map)
+            open(kpath, "a") do io
+                write(io, zkeys)
+            end
+            open(mpath, "a") do io
+                write(io, zmap)
+            end
+        end
+        temp_bytes += UInt64(length(keys)) * UInt64(24)
+    end
+    return temp_bytes
+end
+
 function build_canonical_index!(
     pairs::Vector{PairInfo},
     tmpdir::String,
@@ -2164,34 +2477,54 @@ function build_canonical_index!(
     index = init_canonical_set_index()
     npairs = length(pairs)
     centers = Vector{NTuple{3, Int16}}(undef, npairs)
+    pair_starts = Vector{UInt64}(undef, npairs)
     total_rows = UInt64(0)
     for i in 1:npairs
         pair = pairs[i]
         center = read_offset_center(pair.offset_path)
         nrows = pose_row_count(pair.pose_path)
         centers[i] = center
+        pair_starts[i] = total_rows
         total_rows += UInt64(nrows)
     end
 
     nt = Threads.maxthreadid()
     local_pairs = [Dict{NTuple{3, Int16}, Vector{PairWithStart}}() for _ in 1:nt]
     local_buckets = [Dict{NTuple{3, Int16}, String}() for _ in 1:nt]
+    local_map_buckets = [Dict{NTuple{3, Int16}, String}() for _ in 1:nt]
     local_bytes = fill(UInt64(0), nt)
 
-    @threads :static for i in 1:npairs
-        tid = threadid()
-        center = centers[i]
-        pair = pairs[i]
-        if is_center_canonical(center)
-            vec = get!(local_pairs[tid], center, PairWithStart[])
-            push!(vec, PairWithStart(pair))
-        else
-            local_bytes[tid] += append_noncanonical_pair_to_local_buckets!(
+    if shared_confrot_mask === nothing
+        @threads :static for i in 1:npairs
+            tid = threadid()
+            center = centers[i]
+            pair = pairs[i]
+            if is_center_canonical(center)
+                vec = get!(local_pairs[tid], center, PairWithStart[])
+                push!(vec, PairWithStart(pair))
+            else
+                local_bytes[tid] += append_noncanonical_pair_to_local_buckets!(
+                    local_buckets[tid],
+                    tmpdir,
+                    tid,
+                    pair,
+                    shared_confrot_mask,
+                )
+            end
+        end
+    else
+        mask = shared_confrot_mask::Vector{UInt64}
+        @threads :static for i in 1:npairs
+            tid = threadid()
+            pair = pairs[i]
+            local_bytes[tid] += append_pair_to_local_prefilter_buckets!(
                 local_buckets[tid],
+                local_map_buckets[tid],
                 tmpdir,
                 tid,
                 pair,
-                shared_confrot_mask,
+                pair_starts[i],
+                mask,
             )
         end
     end
@@ -2203,6 +2536,10 @@ function build_canonical_index!(
         end
         for (center, path) in local_buckets[tid]
             paths = get!(index.bucket_by_center, center, String[])
+            push!(paths, path)
+        end
+        for (center, path) in local_map_buckets[tid]
+            paths = get!(index.map_bucket_by_center, center, String[])
             push!(paths, path)
         end
         index.temp_bytes += local_bytes[tid]
@@ -2218,6 +2555,9 @@ function collect_center_keys(index::CanonicalSetIndex)::Set{NTuple{3, Int16}}
         push!(out, c)
     end
     for c in keys(index.bucket_by_center)
+        push!(out, c)
+    end
+    for c in keys(index.map_bucket_by_center)
         push!(out, c)
     end
     return out
@@ -2247,8 +2587,16 @@ function load_center_keys(
         end
     end
     paths = get(index.bucket_by_center, center, String[])
-    for path in paths
-        append!(out, read_key_records(path))
+    if !isempty(paths)
+        for path in paths
+            append!(out, read_key_records(path))
+        end
+    else
+        map_paths = get(index.map_bucket_by_center, center, String[])
+        for path in map_paths
+            keys, _ = read_keyidx64_records(path; single_thread = true)
+            append!(out, keys)
+        end
     end
     return out
 end
@@ -2280,11 +2628,22 @@ function load_center_keys_filtered(
         end
     end
     paths = get(index.bucket_by_center, center, String[])
-    for path in paths
-        keys = read_key_records(path)
-        @inbounds for k in keys
-            bitset_has(shared_confrot_mask, key_confrot(k)) || continue
-            push!(out, k)
+    if !isempty(paths)
+        for path in paths
+            keys = read_key_records(path)
+            @inbounds for k in keys
+                bitset_has(shared_confrot_mask, key_confrot(k)) || continue
+                push!(out, k)
+            end
+        end
+    else
+        map_paths = get(index.map_bucket_by_center, center, String[])
+        for path in map_paths
+            keys, _ = read_keyidx64_records(path; single_thread = true)
+            @inbounds for k in keys
+                bitset_has(shared_confrot_mask, key_confrot(k)) || continue
+                push!(out, k)
+            end
         end
     end
     return out
@@ -3034,318 +3393,314 @@ function build_unique_k_and_lookup!(
     return uid_next, lookup_paths
 end
 
-function get_lookup_for_center!(
-    cache::Dict{NTuple{3, Int16}, Dict{UInt64, UInt32}},
-    order::Vector{NTuple{3, Int16}},
+function build_lookup_cache_for_centers(
+    centers::Vector{NTuple{3, Int16}},
     lookup_paths::Dict{NTuple{3, Int16}, String},
-    center::NTuple{3, Int16},
-    max_cached::Int,
-)::Union{Nothing, Dict{UInt64, UInt32}}
-    existing = get(cache, center, nothing)
-    existing !== nothing && return existing::Dict{UInt64, UInt32}
-
-    path = get(lookup_paths, center, "")
-    isempty(path) && return nothing
-    fsz = try
-        Int(stat(path).size)
-    catch
-        0
-    end
-    keys, uids = read_keyuid_records(path; single_thread = zstd_should_use_single_thread(fsz))
-    d = Dict{UInt64, UInt32}()
-    sizehint!(d, length(keys))
-    @inbounds for i in eachindex(keys)
-        d[keys[i]] = uids[i]
-    end
-    cache[center] = d
-    push!(order, center)
-    if max_cached > 0 && length(order) > max_cached
-        old = popfirst!(order)
-        old != center && delete!(cache, old)
-    end
-    return d
-end
-
-function get_lookup_for_center_local!(
-    cache::Dict{NTuple{3, Int16}, Dict{UInt64, UInt32}},
-    missing::Set{NTuple{3, Int16}},
-    lookup_paths::Dict{NTuple{3, Int16}, String},
-    center::NTuple{3, Int16},
-)::Union{Nothing, Dict{UInt64, UInt32}}
-    (center in missing) && return nothing
-    existing = get(cache, center, nothing)
-    existing !== nothing && return existing::Dict{UInt64, UInt32}
-
-    path = get(lookup_paths, center, "")
-    if isempty(path)
-        push!(missing, center)
-        return nothing
-    end
-    keys, uids = read_keyuid_records(path; single_thread = true)
-    d = Dict{UInt64, UInt32}()
-    sizehint!(d, length(keys))
-    @inbounds for i in eachindex(keys)
-        d[keys[i]] = uids[i]
-    end
-    cache[center] = d
-    return d
-end
-
-function build_noncanonical_offset_lookup_info(
-    lp::LoadedPair,
-    lookup_paths::Dict{NTuple{3, Int16}, String},
-    cache::Dict{NTuple{3, Int16}, Dict{UInt64, UInt32}},
-    order::Vector{NTuple{3, Int16}},
-    max_cached::Int,
-)::Tuple{Vector{UInt64}, Vector{Int32}, Vector{Dict{UInt64, UInt32}}}
-    noff = size(lp.abs_offsets, 1)
-    off_suffix = Vector{UInt64}(undef, noff)
-    off_lookup_id = Vector{Int32}(undef, noff)
-
-    center_to_id = Dict{NTuple{3, Int16}, Int32}()
-    lookups = Dict{UInt64, UInt32}[]
-
-    @inbounds for oi in 1:noff
-        x = lp.abs_offsets[oi, 1]
-        y = lp.abs_offsets[oi, 2]
-        z = lp.abs_offsets[oi, 3]
-        center = canonical_center(x, y, z)
-        rx32 = Int32(x) - Int32(center[1])
-        ry32 = Int32(y) - Int32(center[2])
-        rz32 = Int32(z) - Int32(center[3])
-        (rx32 >= -128 && rx32 <= 127 && ry32 >= -128 && ry32 <= 127 && rz32 >= -128 && rz32 <= 127) ||
-            error("Canonical rebasing failed for offsets in center $(lp.center)")
-        off_suffix[oi] = pack_rel_suffix(Int8(rx32), Int8(ry32), Int8(rz32))
-
-        id = get(center_to_id, center, Int32(-1))
-        if id == Int32(-1)
-            lookup = get_lookup_for_center!(cache, order, lookup_paths, center, max_cached)
-            if lookup === nothing
-                id = Int32(0)
-            else
-                push!(lookups, lookup::Dict{UInt64, UInt32})
-                id = Int32(length(lookups))
-            end
-            center_to_id[center] = id
+)::Dict{NTuple{3, Int16}, Dict{UInt64, UInt32}}
+    out = Dict{NTuple{3, Int16}, Dict{UInt64, UInt32}}()
+    for center in centers
+        path = get(lookup_paths, center, "")
+        isempty(path) && continue
+        fsz = try
+            Int(stat(path).size)
+        catch
+            0
         end
-        off_lookup_id[oi] = id
+        keys, uids = read_keyuid_records(path; single_thread = zstd_should_use_single_thread(fsz))
+        d = Dict{UInt64, UInt32}()
+        sizehint!(d, length(keys))
+        @inbounds for i in eachindex(keys)
+            d[keys[i]] = uids[i]
+        end
+        out[center] = d
     end
-    return off_suffix, off_lookup_id, lookups
+    return out
 end
 
-function map_set_to_lookup!(
+@inline function pack_abs_xyz_key(x::Int16, y::Int16, z::Int16)::UInt64
+    return (
+        UInt64(reinterpret(UInt16, x)) |
+        (UInt64(reinterpret(UInt16, y)) << 16) |
+        (UInt64(reinterpret(UInt16, z)) << 32)
+    )
+end
+
+function build_confrot_abs_lookup_from_lookup_paths(
+    lookup_paths::Dict{NTuple{3, Int16}, String},
+)::Dict{UInt32, Dict{UInt64, UInt32}}
+    confrot_lookup = Dict{UInt32, Dict{UInt64, UInt32}}()
+    for (center, path) in lookup_paths
+        fsz = try
+            Int(stat(path).size)
+        catch
+            0
+        end
+        keys, uids = read_keyuid_records(path; single_thread = zstd_should_use_single_thread(fsz))
+        @inbounds for i in eachindex(keys)
+            conf, rot, rx, ry, rz = unpack_rel_pose_key(keys[i])
+            x = Int16(Int32(center[1]) + Int32(rx))
+            y = Int16(Int32(center[2]) + Int32(ry))
+            z = Int16(Int32(center[3]) + Int32(rz))
+            cr = pack_confrot(conf, rot)
+            xyz = pack_abs_xyz_key(x, y, z)
+            sub = get!(confrot_lookup, cr, Dict{UInt64, UInt32}())
+            haskey(sub, xyz) && error("Duplicate absolute key in lookup: conf=$conf rot=$rot x=$x y=$y z=$z")
+            sub[xyz] = uids[i]
+        end
+    end
+    return confrot_lookup
+end
+
+function pair_raw_starts(pairs::Vector{PairInfo})::Tuple{Vector{UInt64}, UInt64}
+    starts = Vector{UInt64}(undef, length(pairs))
+    total = UInt64(0)
+    for (i, p) in enumerate(pairs)
+        starts[i] = total
+        total += UInt64(pose_row_count(p.pose_path))
+    end
+    return starts, total
+end
+
+function map_pairs_to_confrot_abs_lookup!(
     pairs::Vector{PairInfo},
+    confrot_lookup::Dict{UInt32, Dict{UInt64, UInt32}},
+    shared_confrot_mask::Vector{UInt64},
+    outdir::String,
+    prefix::String,
+    cfg::CliConfig;
+    map_workers::Int = 0,
+)::Tuple{UInt64, UInt64}
+    starts, total_rows = pair_raw_starts(pairs)
+    use_u32 = total_rows <= (UInt64(typemax(UInt32)) + UInt64(1))
+    writer64 = use_u32 ? nothing : init_index64_writer(outdir, prefix; start_index = 1, flush_rows = cfg.threshold_k)
+    writer32 = use_u32 ? init_index_writer(outdir, prefix; start_index = 1, ncols = 2, flush_rows = cfg.threshold_k) : nothing
+
+    npairs = length(pairs)
+    if npairs == 0
+        if use_u32
+            finish_index_writer!(writer32::IndexFileWriter)
+        else
+            finish_index64_writer!(writer64::Index64FileWriter)
+        end
+        return UInt64(0), total_rows
+    end
+
+    # Heaviest pairs first to reduce tail latency.
+    order = collect(1:npairs)
+    sort!(order; by = i -> pairs[i].pose_file_size, rev = true)
+
+    nworkers_cfg = map_workers > 0 ? map_workers : Threads.nthreads()
+    nworkers = max(1, min(nworkers_cfg, Threads.nthreads(), npairs))
+    local_idx = [UInt64[] for _ in 1:nworkers]
+    local_uid = [UInt64[] for _ in 1:nworkers]
+
+    ch = Channel{Int}(npairs)
+    for i in order
+        put!(ch, i)
+    end
+    close(ch)
+
+    @sync for w in 1:nworkers
+        Threads.@spawn begin
+            idxw = local_idx[w]
+            uidw = local_uid[w]
+            for pi in ch
+                pair = pairs[pi]
+                abs_keys = load_offsets_abskeys(pair.offset_path)
+                noff = length(abs_keys)
+                base = starts[pi]
+
+                bytes = endswith(pair.pose_path, ".npy.zst") ? decompress_npy_zst(pair.pose_path) : read(pair.pose_path)
+                descr, fortran, shape, data_pos = parse_npy_header(bytes)
+                (descr == "<u2" || descr == "|u2") || error("Expected uint16 .npy in $(pair.pose_path), got $descr")
+                fortran && error("Fortran-order arrays are not supported in $(pair.pose_path)")
+                length(shape) == 2 || error("Expected 2D pose array in $(pair.pose_path), got rank $(length(shape))")
+                shape[2] == 3 || error("Expected pose shape [N,3] in $(pair.pose_path), got $(shape)")
+                nrows = shape[1]
+                needed = nrows * 3 * 2
+                data_end = data_pos + needed - 1
+                data_end <= length(bytes) || error("Unexpected EOF in .npy payload: $(pair.pose_path)")
+
+                last_cr = UInt32(0xffffffff)
+                last_sub = nothing
+                if ENDIAN_BOM == 0x04030201
+                    raw = reinterpret(UInt16, @view(bytes[data_pos:data_end]))
+                    @inbounds for i in 1:nrows
+                        j = 3 * (i - 1) + 1
+                        c = raw[j]
+                        r = raw[j + 1]
+                        cr = pack_confrot(c, r)
+                        bitset_has(shared_confrot_mask, cr) || continue
+                        if cr != last_cr
+                            last_sub = get(confrot_lookup, cr, nothing)
+                            last_cr = cr
+                        end
+                        sub = last_sub
+                        sub === nothing && continue
+                        oi = Int(raw[j + 2]) + 1
+                        oi <= noff || error("Offset index out of range in $(pair.pose_path)")
+                        uid = get(sub::Dict{UInt64, UInt32}, abs_keys[oi], UInt32(0xffffffff))
+                        uid == UInt32(0xffffffff) && continue
+                        push!(idxw, base + UInt64(i - 1))
+                        push!(uidw, UInt64(uid))
+                    end
+                else
+                    p = data_pos
+                    @inbounds for i in 1:nrows
+                        c = read_le_u16(bytes, p)
+                        r = read_le_u16(bytes, p + 2)
+                        cr = pack_confrot(c, r)
+                        bitset_has(shared_confrot_mask, cr) || begin
+                            p += 6
+                            continue
+                        end
+                        if cr != last_cr
+                            last_sub = get(confrot_lookup, cr, nothing)
+                            last_cr = cr
+                        end
+                        sub = last_sub
+                        if sub !== nothing
+                            oi = Int(read_le_u16(bytes, p + 4)) + 1
+                            oi <= noff || error("Offset index out of range in $(pair.pose_path)")
+                            uid = get(sub::Dict{UInt64, UInt32}, abs_keys[oi], UInt32(0xffffffff))
+                            if uid != UInt32(0xffffffff)
+                                push!(idxw, base + UInt64(i - 1))
+                                push!(uidw, UInt64(uid))
+                            end
+                        end
+                        p += 6
+                    end
+                end
+            end
+        end
+    end
+
+    total_hits = UInt64(0)
+    for w in 1:nworkers
+        idxw = local_idx[w]
+        uidw = local_uid[w]
+        total_hits += UInt64(length(idxw))
+        if isempty(idxw)
+            continue
+        end
+        if use_u32
+            nout = length(idxw)
+            c1 = Vector{UInt32}(undef, nout)
+            c2 = Vector{UInt32}(undef, nout)
+            @inbounds for i in 1:nout
+                idxw[i] <= UInt64(typemax(UInt32)) || error("Index exceeds UInt32 range")
+                uidw[i] <= UInt64(typemax(UInt32)) || error("Unique index exceeds UInt32 range")
+                c1[i] = UInt32(idxw[i])
+                c2[i] = UInt32(uidw[i])
+            end
+            add_index2!(writer32::IndexFileWriter, c1, c2)
+        else
+            add_index64_2!(writer64::Index64FileWriter, idxw, uidw)
+        end
+    end
+
+    if use_u32
+        finish_index_writer!(writer32::IndexFileWriter)
+    else
+        finish_index64_writer!(writer64::Index64FileWriter)
+    end
+    return total_hits, total_rows
+end
+
+function map_index_to_lookup!(
+    index::CanonicalSetIndex,
     lookup_paths::Dict{NTuple{3, Int16}, String},
     outdir::String,
     prefix::String,
     cfg::CliConfig,
     ;
     total_poses::Union{Nothing, UInt64} = nothing,
-    confrot_mask::Union{Nothing, Vector{UInt64}} = nothing,
+    map_workers::Int = 0,
 )::UInt64
     use_u32 = total_poses !== nothing && (total_poses::UInt64) <= (UInt64(typemax(UInt32)) + UInt64(1))
     writer64 = use_u32 ? nothing : init_index64_writer(outdir, prefix; start_index = 1, flush_rows = cfg.threshold_k)
     writer32 = use_u32 ? init_index_writer(outdir, prefix; start_index = 1, ncols = 2, flush_rows = cfg.threshold_k) : nothing
-    max_cached = try
-        parse(Int, get(ENV, "CROCODILE_LOOKUP_CACHE_CENTERS", "64"))
-    catch
-        64
+
+    tasks = Tuple{NTuple{3, Int16}, String}[]
+    for (center, paths) in index.map_bucket_by_center
+        haskey(lookup_paths, center) || continue
+        for path in paths
+            push!(tasks, (center, path))
+        end
     end
-    max_cached = max(0, max_cached)
-    min_rows_threaded = try
-        parse(Int, get(ENV, "CROCODILE_MAP_THREADS_MIN_ROWS", "500000"))
-    catch
-        500_000
+    isempty(tasks) && begin
+        if use_u32
+            finish_index_writer!(writer32::IndexFileWriter)
+        else
+            finish_index64_writer!(writer64::Index64FileWriter)
+        end
+        return UInt64(0)
     end
-    min_rows_threaded = max(1, min_rows_threaded)
-    cache = Dict{NTuple{3, Int16}, Dict{UInt64, UInt32}}()
-    order = NTuple{3, Int16}[]
-    use_confrot_mask = confrot_mask !== nothing
-    mask = confrot_mask
+
+    # Heaviest tasks first to reduce tail latency.
+    sort!(tasks; by = t -> try
+              stat(t[2]).size
+          catch
+              Int64(0)
+          end, rev = true)
+
+    centers = collect(Set{NTuple{3, Int16}}(first(t) for t in tasks))
+    lookup_cache = build_lookup_cache_for_centers(centers, lookup_paths)
+
+    nworkers_cfg = map_workers > 0 ? map_workers : Threads.nthreads()
+    nworkers = max(1, min(nworkers_cfg, Threads.nthreads(), length(tasks)))
+    local_idx = [UInt64[] for _ in 1:nworkers]
+    local_uid = [UInt64[] for _ in 1:nworkers]
+
+    ch = Channel{Int}(length(tasks))
+    for i in 1:length(tasks)
+        put!(ch, i)
+    end
+    close(ch)
+
+    @sync for w in 1:nworkers
+        Threads.@spawn begin
+            idxw = local_idx[w]
+            uidw = local_uid[w]
+            for ti in ch
+                center, path = tasks[ti]
+                d = get(lookup_cache, center, nothing)
+                d === nothing && continue
+                keys, old = read_keyidx64_records(path; single_thread = true)
+                @inbounds for i in eachindex(keys)
+                    uid = get(d::Dict{UInt64, UInt32}, keys[i], UInt32(0xffffffff))
+                    uid == UInt32(0xffffffff) && continue
+                    push!(idxw, old[i])
+                    push!(uidw, UInt64(uid))
+                end
+            end
+        end
+    end
 
     total_hits = UInt64(0)
-    global_start = UInt64(0)
-    for pair in pairs
-        lp = load_pair(pair)
-        n = length(lp.conf)
-        out_idx = UInt64[]
-        out_uid = UInt64[]
-        sizehint!(out_idx, n ÷ 16 + 1)
-        sizehint!(out_uid, n ÷ 16 + 1)
-
-        pair_center = lp.center
-        pair_is_canonical = is_center_canonical(pair_center)
-        if pair_is_canonical
-            lookup = get_lookup_for_center!(cache, order, lookup_paths, pair_center, max_cached)
-            if lookup !== nothing
-                d = lookup::Dict{UInt64, UInt32}
-                noff = size(lp.rel_offsets, 1)
-                rel_suffix = Vector{UInt64}(undef, noff)
-                @inbounds for oi in 1:noff
-                    rel_suffix[oi] = pack_rel_suffix(lp.rel_offsets[oi, 1], lp.rel_offsets[oi, 2], lp.rel_offsets[oi, 3])
-                end
-                if Threads.nthreads() > 1 && n >= min_rows_threaded
-                    nt = Threads.maxthreadid()
-                    local_idx = [UInt64[] for _ in 1:nt]
-                    local_uid = [UInt64[] for _ in 1:nt]
-                    hint = max(16, n ÷ max(1, nt * 8))
-                    @inbounds for tid in 1:nt
-                        sizehint!(local_idx[tid], hint)
-                        sizehint!(local_uid[tid], hint)
-                    end
-                    if use_confrot_mask
-                        @threads :static for i in 1:n
-                            tid = threadid()
-                            oi = Int(lp.offidx[i]) + 1
-                            cr = pack_confrot(lp.conf[i], lp.rot[i])
-                            bitset_has(mask::Vector{UInt64}, cr) || continue
-                            key = UInt64(cr) | rel_suffix[oi]
-                            uid = get(d, key, UInt32(0xffffffff))
-                            uid == UInt32(0xffffffff) && continue
-                            push!(local_idx[tid], global_start + UInt64(i - 1))
-                            push!(local_uid[tid], UInt64(uid))
-                        end
-                    else
-                        @threads :static for i in 1:n
-                            tid = threadid()
-                            oi = Int(lp.offidx[i]) + 1
-                            cr = pack_confrot(lp.conf[i], lp.rot[i])
-                            key = UInt64(cr) | rel_suffix[oi]
-                            uid = get(d, key, UInt32(0xffffffff))
-                            uid == UInt32(0xffffffff) && continue
-                            push!(local_idx[tid], global_start + UInt64(i - 1))
-                            push!(local_uid[tid], UInt64(uid))
-                        end
-                    end
-                    @inbounds for tid in 1:nt
-                        append!(out_idx, local_idx[tid])
-                        append!(out_uid, local_uid[tid])
-                    end
-                else
-                    if use_confrot_mask
-                        @inbounds for i in 1:n
-                            oi = Int(lp.offidx[i]) + 1
-                            cr = pack_confrot(lp.conf[i], lp.rot[i])
-                            bitset_has(mask::Vector{UInt64}, cr) || continue
-                            key = UInt64(cr) | rel_suffix[oi]
-                            uid = get(d, key, UInt32(0xffffffff))
-                            uid == UInt32(0xffffffff) && continue
-                            push!(out_idx, global_start + UInt64(i - 1))
-                            push!(out_uid, UInt64(uid))
-                        end
-                    else
-                        @inbounds for i in 1:n
-                            oi = Int(lp.offidx[i]) + 1
-                            cr = pack_confrot(lp.conf[i], lp.rot[i])
-                            key = UInt64(cr) | rel_suffix[oi]
-                            uid = get(d, key, UInt32(0xffffffff))
-                            uid == UInt32(0xffffffff) && continue
-                            push!(out_idx, global_start + UInt64(i - 1))
-                            push!(out_uid, UInt64(uid))
-                        end
-                    end
-                end
+    for w in 1:nworkers
+        idxw = local_idx[w]
+        uidw = local_uid[w]
+        total_hits += UInt64(length(idxw))
+        if isempty(idxw)
+            continue
+        end
+        if use_u32
+            nout = length(idxw)
+            c1 = Vector{UInt32}(undef, nout)
+            c2 = Vector{UInt32}(undef, nout)
+            @inbounds for i in 1:nout
+                idxw[i] <= UInt64(typemax(UInt32)) || error("Index exceeds UInt32 range")
+                uidw[i] <= UInt64(typemax(UInt32)) || error("Unique index exceeds UInt32 range")
+                c1[i] = UInt32(idxw[i])
+                c2[i] = UInt32(uidw[i])
             end
+            add_index2!(writer32::IndexFileWriter, c1, c2)
         else
-            off_suffix, off_lookup_id, off_lookups = build_noncanonical_offset_lookup_info(
-                lp,
-                lookup_paths,
-                cache,
-                order,
-                max_cached,
-            )
-            isempty(off_lookups) || begin
-            if Threads.nthreads() > 1 && n >= min_rows_threaded
-                nt = Threads.maxthreadid()
-                local_idx = [UInt64[] for _ in 1:nt]
-                local_uid = [UInt64[] for _ in 1:nt]
-                hint = max(16, n ÷ max(1, nt * 8))
-                @inbounds for tid in 1:nt
-                    sizehint!(local_idx[tid], hint)
-                    sizehint!(local_uid[tid], hint)
-                end
-                if use_confrot_mask
-                    @threads :static for i in 1:n
-                        tid = threadid()
-                        oi = Int(lp.offidx[i]) + 1
-                        lid = off_lookup_id[oi]
-                        lid == 0 && continue
-                        cr = pack_confrot(lp.conf[i], lp.rot[i])
-                        bitset_has(mask::Vector{UInt64}, cr) || continue
-                        key = UInt64(cr) | off_suffix[oi]
-                        uid = get(off_lookups[Int(lid)], key, UInt32(0xffffffff))
-                        uid == UInt32(0xffffffff) && continue
-                        push!(local_idx[tid], global_start + UInt64(i - 1))
-                        push!(local_uid[tid], UInt64(uid))
-                    end
-                else
-                    @threads :static for i in 1:n
-                        tid = threadid()
-                        oi = Int(lp.offidx[i]) + 1
-                        lid = off_lookup_id[oi]
-                        lid == 0 && continue
-                        cr = pack_confrot(lp.conf[i], lp.rot[i])
-                        key = UInt64(cr) | off_suffix[oi]
-                        uid = get(off_lookups[Int(lid)], key, UInt32(0xffffffff))
-                        uid == UInt32(0xffffffff) && continue
-                        push!(local_idx[tid], global_start + UInt64(i - 1))
-                        push!(local_uid[tid], UInt64(uid))
-                    end
-                end
-                @inbounds for tid in 1:nt
-                    append!(out_idx, local_idx[tid])
-                    append!(out_uid, local_uid[tid])
-                end
-            else
-                if use_confrot_mask
-                    @inbounds for i in 1:n
-                        oi = Int(lp.offidx[i]) + 1
-                        lid = off_lookup_id[oi]
-                        lid == 0 && continue
-                        cr = pack_confrot(lp.conf[i], lp.rot[i])
-                        bitset_has(mask::Vector{UInt64}, cr) || continue
-                        key = UInt64(cr) | off_suffix[oi]
-                        uid = get(off_lookups[Int(lid)], key, UInt32(0xffffffff))
-                        uid == UInt32(0xffffffff) && continue
-                        push!(out_idx, global_start + UInt64(i - 1))
-                        push!(out_uid, UInt64(uid))
-                    end
-                else
-                    @inbounds for i in 1:n
-                        oi = Int(lp.offidx[i]) + 1
-                        lid = off_lookup_id[oi]
-                        lid == 0 && continue
-                        cr = pack_confrot(lp.conf[i], lp.rot[i])
-                        key = UInt64(cr) | off_suffix[oi]
-                        uid = get(off_lookups[Int(lid)], key, UInt32(0xffffffff))
-                        uid == UInt32(0xffffffff) && continue
-                        push!(out_idx, global_start + UInt64(i - 1))
-                        push!(out_uid, UInt64(uid))
-                    end
-                end
-            end
-            end
+            add_index64_2!(writer64::Index64FileWriter, idxw, uidw)
         end
-
-        if !isempty(out_idx)
-            total_hits += UInt64(length(out_idx))
-            if use_u32
-                nout = length(out_idx)
-                c1 = Vector{UInt32}(undef, nout)
-                c2 = Vector{UInt32}(undef, nout)
-                @inbounds for i in 1:nout
-                    out_idx[i] <= UInt64(typemax(UInt32)) || error("Index exceeds UInt32 range")
-                    out_uid[i] <= UInt64(typemax(UInt32)) || error("Unique index exceeds UInt32 range")
-                    c1[i] = UInt32(out_idx[i])
-                    c2[i] = UInt32(out_uid[i])
-                end
-                add_index2!(writer32::IndexFileWriter, c1, c2)
-            else
-                add_index64_2!(writer64::Index64FileWriter, out_idx, out_uid)
-            end
-        end
-        global_start += UInt64(n)
     end
+
     if use_u32
         finish_index_writer!(writer32::IndexFileWriter)
     else
@@ -3789,6 +4144,8 @@ end
 
 function main(argv::Vector{String})::Int
     cfg = parse_args(argv)
+    cfg.reuse_unique_k_dir !== nothing && cfg.stop_after_unique_k &&
+        error("--stop-after-unique-k cannot be combined with --reuse-unique-k-dir")
     isdir(cfg.set1) || error("Input directory not found: $(cfg.set1)")
     isdir(cfg.set2) || error("Input directory not found: $(cfg.set2)")
     !ispath(cfg.output) || error("Output path already exists: $(cfg.output)")
@@ -3815,28 +4172,34 @@ function main(argv::Vector{String})::Int
     println("A (largest): $large_name")
     println("B (smallest): $small_name")
     println("threads: $(nthreads())")
+    println("map workers: $(resolved_map_workers(cfg.map_workers))")
     print_sizes = should_print_size_stats()
+    set_runtime_zstd_overrides!(cfg.phase1_zstd_threads, cfg.map_zstd_threads)
+    set_runtime_stage!(:phase1)
 
     lookup_dir = joinpath(tmp_root, "k-lookup")
     lookup_paths = Dict{NTuple{3, Int16}, String}()
     unique_k_count = UInt64(0)
     total_rows_large = UInt64(0)
     total_rows_small = UInt64(0)
+    map_prefilter_mask::Union{Nothing, Vector{UInt64}} = nothing
+    index_large::Union{Nothing, CanonicalSetIndex} = nothing
+    index_small::Union{Nothing, CanonicalSetIndex} = nothing
 
     if cfg.reuse_unique_k_dir === nothing
         prefilter_shared_mask::Union{Nothing, Vector{UInt64}} = nothing
-        if enable_global_confrot_prefilter()
-            println("stage:start confrot-prefilter")
-            t_stage = time()
-            prefilter_shared_mask, uniq_confrot_a, shared_confrot = build_global_confrot_shared_mask_from_pairs(large_pairs, small_pairs)
-            println("confrot prefilter (pre-canonical): unique-A=$uniq_confrot_a shared=$shared_confrot")
-            println(@sprintf("stage:end confrot-prefilter %.3f", time() - t_stage))
-        end
+        println("stage:start confrot-prefilter")
+        t_stage = time()
+        prefilter_shared_mask, uniq_confrot_a, shared_confrot = build_global_confrot_shared_mask_from_pairs(large_pairs, small_pairs)
+        println("confrot prefilter (pre-canonical): unique-A=$uniq_confrot_a shared=$shared_confrot")
+        println(@sprintf("stage:end confrot-prefilter %.3f", time() - t_stage))
 
         println("stage:start canonicalization")
         t_stage = time()
         index_a = build_canonical_index!(large_pairs, tmp_a, prefilter_shared_mask)
         index_b = build_canonical_index!(small_pairs, tmp_b, prefilter_shared_mask)
+        index_large = index_a
+        index_small = index_b
         println(@sprintf("stage:end canonicalization %.3f", time() - t_stage))
         println("A poses indexed: $(index_a.total_poses), temp rewrite (raw est): $(fmt_bytes(index_a.temp_bytes))")
         println("B poses indexed: $(index_b.total_poses), temp rewrite (raw est): $(fmt_bytes(index_b.temp_bytes))")
@@ -3866,46 +4229,98 @@ function main(argv::Vector{String})::Int
         t_stage = time()
         unique_k_count, lookup_paths = build_lookup_from_existing_unique_k!(reuse_pairs, lookup_dir)
         println(@sprintf("stage:end reuse-unique-k-lookup %.3f", time() - t_stage))
-        total_rows_large = sum_pose_rows(large_pairs)
-        total_rows_small = sum_pose_rows(small_pairs)
-        println("A source rows: $total_rows_large")
-        println("B source rows: $total_rows_small")
-    end
-
-    map_confrot_mask::Union{Nothing, Vector{UInt64}} = nothing
-    if enable_map_confrot_prefilter()
-        println("stage:start map-confrot-mask")
+        println("stage:start reuse-map-prefilter")
         t_stage = time()
-        map_confrot_mask, map_confrot_uniq = build_map_confrot_mask_from_lookup_paths(lookup_paths)
-        println("map confrot mask size: $map_confrot_uniq")
-        println(@sprintf("stage:end map-confrot-mask %.3f", time() - t_stage))
+        reuse_mask, reuse_confrot_uniq = build_map_confrot_mask_from_lookup_paths(lookup_paths)
+        println("reuse map confrot mask size: $reuse_confrot_uniq")
+        println(@sprintf("stage:end reuse-map-prefilter %.3f", time() - t_stage))
+        map_prefilter_mask = reuse_mask
     end
 
-    println("stage:start map-a")
-    t_stage = time()
-    matched_a_rows = map_set_to_lookup!(
-        large_pairs,
-        lookup_paths,
-        cfg.output,
-        "ind-A",
-        cfg;
-        total_poses = total_rows_large,
-        confrot_mask = map_confrot_mask,
-    )
-    println(@sprintf("stage:end map-a %.3f", time() - t_stage))
+    if cfg.stop_after_unique_k
+        println("stop-after-unique-k: skipping map-a/map-b")
+        println("unique-K rows: $unique_k_count")
+        println("done")
+        if print_sizes
+            println("output size: $(fmt_bytes(dir_size_bytes(cfg.output)))")
+        end
+        if cfg.keep_temp
+            println("kept temp directory: $tmp_root")
+        else
+            rm(tmp_root; recursive = true, force = true)
+        end
+        return 0
+    end
 
-    println("stage:start map-b")
-    t_stage = time()
-    matched_b_rows = map_set_to_lookup!(
-        small_pairs,
-        lookup_paths,
-        cfg.output,
-        "ind-B",
-        cfg;
-        total_poses = total_rows_small,
-        confrot_mask = map_confrot_mask,
-    )
-    println(@sprintf("stage:end map-b %.3f", time() - t_stage))
+    set_runtime_stage!(:map)
+    matched_a_rows = UInt64(0)
+    matched_b_rows = UInt64(0)
+    if cfg.reuse_unique_k_dir === nothing
+        index_large !== nothing && index_small !== nothing || error("Internal error: canonical indexes missing for map stage")
+        println("stage:mark map-source canonical-index")
+
+        println("stage:start map-a")
+        t_stage = time()
+        matched_a_rows = map_index_to_lookup!(
+            index_large::CanonicalSetIndex,
+            lookup_paths,
+            cfg.output,
+            "ind-A",
+            cfg;
+            total_poses = total_rows_large,
+            map_workers = resolved_map_workers(cfg.map_workers),
+        )
+        println(@sprintf("stage:end map-a %.3f", time() - t_stage))
+
+        println("stage:start map-b")
+        t_stage = time()
+        matched_b_rows = map_index_to_lookup!(
+            index_small::CanonicalSetIndex,
+            lookup_paths,
+            cfg.output,
+            "ind-B",
+            cfg;
+            total_poses = total_rows_small,
+            map_workers = resolved_map_workers(cfg.map_workers),
+        )
+        println(@sprintf("stage:end map-b %.3f", time() - t_stage))
+    else
+        map_prefilter_mask !== nothing || error("Internal error: missing reuse map prefilter mask")
+        println("stage:start reuse-confrot-abs-lookup")
+        t_stage = time()
+        confrot_abs_lookup = build_confrot_abs_lookup_from_lookup_paths(lookup_paths)
+        println(@sprintf("stage:end reuse-confrot-abs-lookup %.3f", time() - t_stage))
+        println("stage:mark map-source direct-abs-int16")
+
+        println("stage:start map-a")
+        t_stage = time()
+        matched_a_rows, total_rows_large = map_pairs_to_confrot_abs_lookup!(
+            large_pairs,
+            confrot_abs_lookup,
+            map_prefilter_mask::Vector{UInt64},
+            cfg.output,
+            "ind-A",
+            cfg;
+            map_workers = resolved_map_workers(cfg.map_workers),
+        )
+        println(@sprintf("stage:end map-a %.3f", time() - t_stage))
+
+        println("stage:start map-b")
+        t_stage = time()
+        matched_b_rows, total_rows_small = map_pairs_to_confrot_abs_lookup!(
+            small_pairs,
+            confrot_abs_lookup,
+            map_prefilter_mask::Vector{UInt64},
+            cfg.output,
+            "ind-B",
+            cfg;
+            map_workers = resolved_map_workers(cfg.map_workers),
+        )
+        println(@sprintf("stage:end map-b %.3f", time() - t_stage))
+        println("A rows scanned (raw): $total_rows_large")
+        println("B rows scanned (raw): $total_rows_small")
+    end
+
     println("matched A rows: $matched_a_rows")
     println("matched B rows: $matched_b_rows")
     println("unique-K rows: $unique_k_count")
