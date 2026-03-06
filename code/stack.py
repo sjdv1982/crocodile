@@ -363,34 +363,6 @@ def _dihedral_filter(
     return mask
 
 
-def _write_output_files(
-    packed: list[tuple[np.ndarray, np.ndarray, np.ndarray]],
-    poses_path: Path,
-    offsets_path: Path,
-) -> None:
-    if len(packed) > 1:
-        raise ValueError(
-            f"Result requires {len(packed)} pose chunks, but --output only accepts one poses/offsets pair"
-        )
-
-    if packed:
-        poses, mean_offset, offsets = packed[0]
-    else:
-        poses = np.empty((0, 3), dtype=np.uint16)
-        mean_offset = np.zeros((3,), dtype=np.int16)
-        offsets = np.empty((0, 3), dtype=np.uint8)
-
-    poses_path.parent.mkdir(parents=True, exist_ok=True)
-    offsets_path.parent.mkdir(parents=True, exist_ok=True)
-    np.save(str(poses_path), np.asarray(poses, dtype=np.uint16))
-
-    mean_offset = np.asarray(mean_offset, dtype=np.int16)
-    offsets = np.asarray(offsets, dtype=np.uint8)
-    with offsets_path.open("wb") as handle:
-        handle.write(mean_offset.tobytes(order="C"))
-        handle.write(offsets.tobytes(order="C"))
-
-
 def _run(args: argparse.Namespace) -> int:
     dihedral_min_deg, dihedral_max_deg = _dihedral_pair(args.dihedral)
     if args.margin < 0:
