@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# score_rotvec.sh — score poses using the native rotvec DOF path.
+#
+# New path: poses-*.npy + offsets-*.dat  →  convert_poses.py
+#           → *.rotvec.npy + *.conformers.npy  →  minfor.py --input-rotvec
+#
+# Replaces the old path (decode_rotamer_matrices.py → mat4_to_dat.py → minfor.py).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,7 +29,6 @@ RECEPTOR_ATOMTYPES="${RECEPTOR_ATOMTYPES:-1b7f_dom2-aar-atomtypes.npy}"
 RECEPTOR_CHARGES="${RECEPTOR_CHARGES:-}"
 
 LIGAND_ENSEMBLE="${LIGAND_ENSEMBLE:-fraglib-UG-ex1b7f.npy}"
-LIGAND_CONFORMERS="${LIGAND_CONFORMERS:-}"
 LIGAND_ATOMTYPES="${LIGAND_ATOMTYPES:-UG-atomtypes.npy}"
 LIGAND_CHARGES="${LIGAND_CHARGES:-}"
 LIGAND_PDB="${LIGAND_PDB:-}"
@@ -33,10 +38,8 @@ ORACLE="${ORACLE:-jax}"
 NB_KERNEL="${NB_KERNEL:-nonbon8}"
 SCORE_MODE="${SCORE_MODE:-}"
 SCORE_BATCH_SIZE="${SCORE_BATCH_SIZE:-}"
-POOL_CONFORMERS="${POOL_CONFORMERS:-0}"
 
 CONVERT_SCRIPT="${ROOT}/crocodile/code/convert_poses.py"
-CONVERT_TO_LEGACY_SCRIPT="${ROOT}/crocodile/code/convert_poses_to_legacy.py"
 MINFOR_PY="${ROOT}/attract-jax/util/minfor.py"
 
 if [[ ! -f "${POSES}" ]]; then
@@ -64,59 +67,30 @@ trap cleanup EXIT INT TERM
 
 tmp_prefix="${tmpdir}/poses"
 tmp_rotvec="${tmp_prefix}.rotvec.npy"
-tmp_conformers0="${tmp_prefix}.conformers.npy"
-tmp_conformers1="${tmp_prefix}.conformers1.npy"
+tmp_conformers="${tmp_prefix}.conformers.npy"
 tmp_score="${tmpdir}/score.out"
-out_dat="${OUTPUT_PREFIX}.dat"
 
-if [[ -n "${LIGAND_ENSEMBLE}" && -f "${LIGAND_ENSEMBLE}" ]]; then
-  ligand_pose_source_kind="ensemble"
-  ligand_pose_source_path="${LIGAND_ENSEMBLE}"
-elif [[ -n "${LIGAND_PDB}" ]]; then
-  ligand_pose_source_kind="pdb"
-  ligand_pose_source_path="${LIGAND_PDB}"
-else
-  echo "Set LIGAND_ENSEMBLE or LIGAND_PDB" >&2
-  exit 1
-fi
-
+# --- Step 1: convert poses → rotvec DOFs ---
 echo "Converting poses to rotvec DOFs..." >&2
-"${PYTHON_CMD[@]}" "${CONVERT_SCRIPT}" \
-  --poses "${POSES}" \
-  --offsets "${OFFSETS}" \
-  --sequence "${SEQUENCE}" \
+t_convert_start=$(date +%s%N)
+convert_cmd=(
+  "${PYTHON_CMD[@]}" "${CONVERT_SCRIPT}"
+  --poses "${POSES}"
+  --offsets "${OFFSETS}"
+  --sequence "${SEQUENCE}"
   --output-prefix "${tmp_prefix}"
-
-echo "Writing ATTRACT .dat..." >&2
-convert_legacy_cmd=(
-  "${PYTHON_CMD[@]}" "${CONVERT_TO_LEGACY_SCRIPT}"
-  --input-rotvec "${tmp_rotvec}"
-  --output-dat "${out_dat}"
 )
-if [[ -n "${LIGAND_CONFORMERS}" ]]; then
-  convert_legacy_cmd+=(--input-conformers1 "${LIGAND_CONFORMERS}")
-else
-  convert_legacy_cmd+=(--input-conformers0 "${tmp_conformers0}")
-fi
-if [[ "${ligand_pose_source_kind}" == "ensemble" ]]; then
-  convert_legacy_cmd+=(--ligand-ensemble "${ligand_pose_source_path}")
-else
-  convert_legacy_cmd+=(--ligand-pdb "${ligand_pose_source_path}")
-fi
-"${convert_legacy_cmd[@]}"
+"${convert_cmd[@]}"
+t_convert_end=$(date +%s%N)
+t_convert_ms=$(( (t_convert_end - t_convert_start) / 1000000 ))
+echo "convert_poses.py finished in ${t_convert_ms} ms" >&2
 
-if [[ -z "${RECEPTOR_ENS_LIST}" ]] && ! { [[ -n "${RECEPTOR_COORDINATES}" ]] && [[ -f "${RECEPTOR_COORDINATES}" ]]; }; then
-  if [[ -z "${RECEPTOR_PDB}" && -f "1b7f_dom2-aar.pdb" ]]; then
-    RECEPTOR_PDB="1b7f_dom2-aar.pdb"
-  fi
-  if [[ -z "${RECEPTOR_PDB}" ]]; then
-    echo "Set RECEPTOR_ENS_LIST or RECEPTOR_PDB" >&2
-    exit 1
-  fi
-fi
-
+# --- Step 2: score with minfor.py --input-rotvec ---
 cmd=(
-  "${PYTHON_CMD[@]}" "${MINFOR_PY}" "${out_dat}"
+  "${PYTHON_CMD[@]}" "${MINFOR_PY}"
+  --input-rotvec "${tmp_rotvec}"
+  --input-conformers "${tmp_conformers}"
+  --input-world-centered
   --score
   --energy-only
   --oracle "${ORACLE}"
@@ -131,9 +105,6 @@ fi
 if [[ -n "${SCORE_BATCH_SIZE}" ]]; then
   cmd+=(--score-batch-size "${SCORE_BATCH_SIZE}")
 fi
-if [[ "${POOL_CONFORMERS}" == "1" ]]; then
-  cmd+=(--pool-conformers)
-fi
 
 if [[ -n "${RECEPTOR_COORDINATES}" && -f "${RECEPTOR_COORDINATES}" ]]; then
   cmd+=(--receptor-coordinates "${RECEPTOR_COORDINATES}")
@@ -144,6 +115,13 @@ if [[ -n "${RECEPTOR_COORDINATES}" && -f "${RECEPTOR_COORDINATES}" ]]; then
 elif [[ -n "${RECEPTOR_ENS_LIST}" ]]; then
   cmd+=(--receptor-ens-list "${RECEPTOR_ENS_LIST}")
 else
+  if [[ -z "${RECEPTOR_PDB}" && -f "1b7f_dom2-aar.pdb" ]]; then
+    RECEPTOR_PDB="1b7f_dom2-aar.pdb"
+  fi
+  if [[ -z "${RECEPTOR_PDB}" ]]; then
+    echo "Set RECEPTOR_ENS_LIST, RECEPTOR_COORDINATES, or RECEPTOR_PDB" >&2
+    exit 1
+  fi
   cmd+=(--receptor-pdb "${RECEPTOR_PDB}")
 fi
 
@@ -161,13 +139,14 @@ else
   cmd+=(--ligand-pdb "${LIGAND_PDB}")
 fi
 
-echo "Scoring with minfor.py (.dat)..." >&2
+echo "Scoring with minfor.py (rotvec)..." >&2
 t_score_start=$(date +%s%N)
 "${cmd[@]}" > "${tmp_score}"
 t_score_end=$(date +%s%N)
 t_score_ms=$(( (t_score_end - t_score_start) / 1000000 ))
-echo "minfor.py (.dat score) finished in ${t_score_ms} ms" >&2
+echo "minfor.py (score) finished in ${t_score_ms} ms" >&2
 
+# --- Step 3: extract energies ---
 "${PYTHON_CMD[@]}" - "${tmp_score}" "${OUTPUT_PREFIX}.ene" "${OUTPUT_PREFIX}.ene.npy" <<'PY'
 import re
 import sys
@@ -187,3 +166,5 @@ arr = np.asarray(energies, dtype=np.float64)
 np.savetxt(ene_txt, arr, fmt="%.3f")
 np.save(ene_npy, arr)
 PY
+
+echo "Done. Wrote ${OUTPUT_PREFIX}.ene and ${OUTPUT_PREFIX}.ene.npy" >&2
