@@ -7,25 +7,18 @@
 # Replaces the old path (decode_rotamer_matrices.py → mat4_to_dat.py → minfor.py).
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 JAX_ENV="${JAX_ENV:-jax}"
-if [[ -n "${PYTHON_BIN:-}" ]]; then
-  PYTHON_CMD=("${PYTHON_BIN}")
-else
-  PYTHON_CMD=(conda run --no-capture-output -n "${JAX_ENV}" python)
-fi
+PYTHON_CMD=(conda run --no-capture-output -n "${JAX_ENV}" python)
 
 POSES="${POSES:-poses-1.npy}"
 OFFSETS="${OFFSETS:-offsets-1.dat}"
 SEQUENCE="${SEQUENCE:-UG}"
 
-GRID="${GRID:-1b7f_dom2-aar.grid}"
-ATTRACT_PAR_NPZ="${ATTRACT_PAR_NPZ:-${ROOT}/attract-jax/attract-par.npz}"
+ATTRACT_PAR_NPZ="${ATTRACT_PAR_NPZ:-attract-jax/attract-par.npz}"
 RECEPTOR_ENS_LIST="${RECEPTOR_ENS_LIST:-}"
 RECEPTOR_PDB="${RECEPTOR_PDB:-}"
-RECEPTOR_COORDINATES="${RECEPTOR_COORDINATES:-1b7f_dom2-aar-ocordinates.npy}"
-RECEPTOR_ATOMTYPES="${RECEPTOR_ATOMTYPES:-1b7f_dom2-aar-atomtypes.npy}"
+RECEPTOR_COORDINATES="${RECEPTOR_COORDINATES:-}"
+RECEPTOR_ATOMTYPES="${RECEPTOR_ATOMTYPES:-}"
 RECEPTOR_CHARGES="${RECEPTOR_CHARGES:-}"
 
 LIGAND_ENSEMBLE="${LIGAND_ENSEMBLE:-fraglib-UG-ex1b7f.npy}"
@@ -38,9 +31,9 @@ ORACLE="${ORACLE:-jax}"
 NB_KERNEL="${NB_KERNEL:-compiled}"
 SCORE_MODE="${SCORE_MODE:-}"
 SCORE_BATCH_SIZE="${SCORE_BATCH_SIZE:-}"
-
-CONVERT_SCRIPT="${ROOT}/crocodile/code/convert_poses.py"
-MINFOR_PY="${ROOT}/attract-jax/util/minfor.py"
+CONVERT_SCRIPT="code/convert_poses.py"
+MINFOR_PY="attract-jax/util/minfor.py"
+MINFOR_DEPS="attract-jax/util/minfor.py.DEPS.txt"
 
 if [[ ! -f "${POSES}" ]]; then
   echo "Missing poses file: ${POSES}" >&2
@@ -48,10 +41,6 @@ if [[ ! -f "${POSES}" ]]; then
 fi
 if [[ ! -f "${OFFSETS}" ]]; then
   echo "Missing offsets file: ${OFFSETS}" >&2
-  exit 1
-fi
-if [[ ! -f "${GRID}" ]]; then
-  echo "Missing grid file: ${GRID}" >&2
   exit 1
 fi
 if [[ ! -f "${ATTRACT_PAR_NPZ}" ]]; then
@@ -65,36 +54,39 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-tmp_prefix="${tmpdir}/poses"
+tmp_prefix="poses-1"
 tmp_rotvec="${tmp_prefix}.rotvec.npy"
 tmp_conformers="${tmp_prefix}.conformers.npy"
-tmp_score="${tmpdir}/score.out"
+tmp_score="scorez4.out"
 
 # --- Step 1: convert poses → rotvec DOFs ---
-echo "Converting poses to rotvec DOFs..." >&2
-t_convert_start=$(date +%s%N)
-convert_cmd=(
-  "${PYTHON_CMD[@]}" "${CONVERT_SCRIPT}"
-  --poses "${POSES}"
-  --offsets "${OFFSETS}"
-  --sequence "${SEQUENCE}"
-  --output-prefix "${tmp_prefix}"
-)
-"${convert_cmd[@]}"
-t_convert_end=$(date +%s%N)
-t_convert_ms=$(( (t_convert_end - t_convert_start) / 1000000 ))
-echo "convert_poses.py finished in ${t_convert_ms} ms" >&2
+if [[ ! -f "${tmp_rotvec}" ]]; then
+  echo "Converting poses to rotvec DOFs..." >&2
+  t_convert_start=$(date +%s%N)
+  convert_cmd=(
+    "${PYTHON_CMD[@]}" "${CONVERT_SCRIPT}"
+    --poses "${POSES}"
+    --offsets "${OFFSETS}"
+    --sequence "${SEQUENCE}"
+    --output-prefix "${tmp_prefix}"
+  )
+  "${convert_cmd[@]}"
+  t_convert_end=$(date +%s%N)
+  t_convert_ms=$(( (t_convert_end - t_convert_start) / 1000000 ))
+  echo "convert_poses.py finished in ${t_convert_ms} ms" >&2
+else
+  echo "Skipping conversion (${tmp_rotvec} already exists)" >&2
+fi
 
 # --- Step 2: score with minfor.py --input-rotvec ---
 cmd=(
-  "${PYTHON_CMD[@]}" "${MINFOR_PY}"
+  python "${MINFOR_PY}"
   --input-rotvec "${tmp_rotvec}"
   --input-conformers "${tmp_conformers}"
   --input-world-centered
   --score
   --energy-only
   --oracle "${ORACLE}"
-  --grid "${GRID}"
   --attract-par-npz "${ATTRACT_PAR_NPZ}"
   --nb-kernel "${NB_KERNEL}"
 )
@@ -139,12 +131,17 @@ else
   cmd+=(--ligand-pdb "${LIGAND_PDB}")
 fi
 
+cmd2="${cmd[@]} > ${tmp_score}"
+echo $cmd2
+exit 0
 echo "Scoring with minfor.py (rotvec)..." >&2
 t_score_start=$(date +%s%N)
-"${cmd[@]}" > "${tmp_score}"
+seamless-run -vvv -nd -y -I ${MINFOR_DEPS} --conda jax $cmd2
 t_score_end=$(date +%s%N)
 t_score_ms=$(( (t_score_end - t_score_start) / 1000000 ))
 echo "minfor.py (score) finished in ${t_score_ms} ms" >&2
+
+exit 0
 
 # --- Step 3: extract energies ---
 "${PYTHON_CMD[@]}" - "${tmp_score}" "${OUTPUT_PREFIX}.ene" "${OUTPUT_PREFIX}.ene.npy" <<'PY'
