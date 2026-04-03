@@ -434,6 +434,7 @@ def _run(args: argparse.Namespace) -> int:
 
     stream_acc = PoseStreamAccumulator(
         output_dir,
+        zstd=True,
         max_poses_per_chunk=args.max_poses_per_chunk,
     )
     distance_pbar = tqdm(
