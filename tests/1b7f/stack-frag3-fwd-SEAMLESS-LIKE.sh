@@ -16,6 +16,6 @@ seamless-run -vvv -y --conda alaric --dry --write-remote-job "$deploymentdir" \
   --output \$outdir/files \
   && seamless-checksum-index /ramscratch/$output/files && \
   mkdir /ramscratch/$output/bufferdir
-  seamless-upload /ramscratch/$output/files --hardlink --destination /ramscratch/$output/bufferdir
+  seamless-upload -y --hardlink --destination /ramscratch/$output/bufferdir /ramscratch/$output/files
   cat /ramscratch/$output/files.INDEX
 """
