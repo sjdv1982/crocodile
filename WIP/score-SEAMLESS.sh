@@ -1,24 +1,25 @@
 set -euo pipefail
 
-pose_dir=$1  
-pose_dir_index=$2  # e.g. 1 for poses-1.npy.zst
-sequence=$3  # e.g. UG
-receptor_pdb=$4  # reduced, e.g. 1b7f_dom2-aar.pdb
-ligand_ensemble=$5 # e.g. fraglib-UG-ex1b7f.npy
-ligand_atomtypes=$6  #e.g. UG-atomtypes.npy
-nb_kernel=$7 # compiled or jax
-remote_jobdir=$8  
+pose_dir=$1
+first_index=$2
+last_index=$3
+sequence=$4  # e.g. UG
+receptor_pdb=$5  # reduced, e.g. 1b7f_dom2-aar.pdb
+ligand_ensemble=$6 # e.g. fraglib-UG-ex1b7f.npy
+ligand_atomtypes=$7  #e.g. UG-atomtypes.npy
+nb_kernel=$8 # compiled or jax
+remote_jobdir=$9
 
 test ! -e "$remote_jobdir"
 
 
 MINFOR="attract-jax/util/minfor.py"
 CONVERT_POSES="code/convert_poses.py"
-seamless-run -vvv -y --dry --write-remote-job $remote_jobdir \
-  -i ${CONVERT_POSES} \
-  -I ${CONVERT_POSES}.DEPS.txt \
-  -i ${MINFOR} \
-  -I ${MINFOR}.DEPS.txt \
+seamless-run -vvv -y --dry --write-remote-job "$remote_jobdir" \
+  -i "${CONVERT_POSES}" \
+  -I "${CONVERT_POSES}.DEPS.txt" \
+  -i "${MINFOR}" \
+  -I "${MINFOR}.DEPS.txt" \
   -i attract-jax/attract-par.npz \
   --conda jax \
-  score.sh "$1" "$2" "$3" "$4" "$5" "$6" "$7"
+  score.sh "$pose_dir" "$first_index" "$last_index" "$sequence" "$receptor_pdb" "$ligand_ensemble" "$ligand_atomtypes" "$nb_kernel"
