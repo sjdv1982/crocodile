@@ -8,3 +8,6 @@ tests/1b7f/frag3-?wd/poses-1[0-9]*
 WIP/*.npy
 WIP/*.ene
 WIP/*.grid
+WIP/RUN-*
+WIP/ramscratch
+WIP/BAK

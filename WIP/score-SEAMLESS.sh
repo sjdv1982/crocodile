@@ -12,12 +12,13 @@ remote_jobdir=$8
 test ! -e "$remote_jobdir"
 
 
-MINFOR="attract-jax/util/minfor.py.DEPS.txt"
+MINFOR="attract-jax/util/minfor.py"
 CONVERT_POSES="code/convert_poses.py"
 seamless-run -vvv -y --dry --write-remote-job $remote_jobdir \
   -i ${CONVERT_POSES} \
   -I ${CONVERT_POSES}.DEPS.txt \
   -i ${MINFOR} \
   -I ${MINFOR}.DEPS.txt \
+  -i attract-jax/attract-par.npz \
   --conda jax \
-  score.sh "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8"
+  score.sh "$1" "$2" "$3" "$4" "$5" "$6" "$7"

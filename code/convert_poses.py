@@ -85,7 +85,7 @@ def convert_poses(
 
     n = len(poses)
     rotvecs = np.zeros((n, 3), dtype=np.float64)
-    conformers = poses[:, 0].astype(np.int32) - 1
+    conformers = poses[:, 0].astype(np.int32)
 
     conf_indices_sorted = np.argsort(poses[:, 0], kind="stable")
     rotvec_cache: dict[int, np.ndarray] = {}
@@ -111,14 +111,18 @@ def convert_poses(
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--poses", required=True, type=_existing_file, help="poses-*.npy")
-    ap.add_argument("--offsets", required=True, type=_existing_file, help="offsets-*.dat")
+    ap.add_argument(
+        "--offsets", required=True, type=_existing_file, help="offsets-*.dat"
+    )
     ap.add_argument(
         "--sequence",
         required=True,
         type=_dinucleotide_sequence,
         help="Dinucleotide sequence (AA/AC/.../UU)",
     )
-    ap.add_argument("--output-prefix", required=True, help="output prefix (no extension)")
+    ap.add_argument(
+        "--output-prefix", required=True, help="output prefix (no extension)"
+    )
     ap.add_argument(
         "--verify-checksums",
         action="store_true",
