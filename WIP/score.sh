@@ -26,7 +26,7 @@ if (( first_index > last_index )); then
   exit 1
 fi
 
-tmp_prefix=poses-${first_index}
+tmp_prefix=${tmpdir}/poses-${first_index}
 if (( first_index != last_index )); then
   tmp_prefix+="-${last_index}"
 fi
