@@ -11,16 +11,10 @@ sys.path.append(here)
 from pose_test_data import generate_pose_test_data
 from poses import (
     PoseStreamAccumulator,
-    (
-    PoseStreamAccumulator,
     pack_all_poses,
-   
     read_pose_files,
-   
     unpack_poses,
-   
     write_pose_files,
-),
 )
 
 
@@ -92,10 +86,10 @@ def test_pose_stream_accumulator_emits_canonical_centers_by_default():
     rot = np.array([20, 21, 22, 23], dtype=np.uint16)
     trans = np.array(
         [
-            [0, 0, 0],       # center (0,0,0)
-            [255, 1, -1],    # center (256,0,0)
-            [256, 2, 2],     # center (256,0,0)
-            [-129, 0, 0],    # center (-256,0,0)
+            [0, 0, 0],  # center (0,0,0)
+            [255, 1, -1],  # center (256,0,0)
+            [256, 2, 2],  # center (256,0,0)
+            [-129, 0, 0],  # center (-256,0,0)
         ],
         dtype=np.int16,
     )
