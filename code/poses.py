@@ -8,6 +8,9 @@ import numpy as np
 from offsets import expand_discrete_offsets, gather_discrete_offsets
 
 
+_POSE_ZSTD_SUFFIX = ".npy.zst"
+
+
 def canonical_center_coord(v: np.ndarray | int) -> np.ndarray | int:
     if isinstance(v, np.ndarray):
         out = ((v.astype(np.int32) + 128) // 256) * 256
@@ -122,7 +125,9 @@ def _pack_expanded_poses_slow(
             need_new_chunk = too_wide or too_many_offsets or too_many_poses
 
             if need_new_chunk and pose_count > 0:
-                _finalize_chunk(results, conf_list, rot_list, off_idx_list, offsets_list)
+                _finalize_chunk(
+                    results, conf_list, rot_list, off_idx_list, offsets_list
+                )
                 conf_list = []
                 rot_list = []
                 off_idx_list = []
@@ -271,9 +276,11 @@ class PoseStreamAccumulator:
         *,
         max_poses_per_chunk: int = 2**32,
         canonical_centers: bool = True,
+        zstd: bool = False,
     ) -> None:
         self._outdir = Path(outdir)
         self._max_poses_per_chunk = int(max_poses_per_chunk)
+        self._zstd = bool(zstd)
         if self._max_poses_per_chunk <= 0:
             raise ValueError("max_poses_per_chunk must be positive")
         if self._max_poses_per_chunk > 2**32:
@@ -298,8 +305,9 @@ class PoseStreamAccumulator:
         self._tmp.close()
 
     def _current_paths(self) -> tuple[Path, Path]:
+        poses_suffix = _POSE_ZSTD_SUFFIX if self._zstd else ".npy"
         return (
-            self._outdir / f"poses-{self._chunk_index}.npy",
+            self._outdir / f"poses-{self._chunk_index}{poses_suffix}",
             self._outdir / f"offsets-{self._chunk_index}.dat",
         )
 
@@ -340,7 +348,9 @@ class PoseStreamAccumulator:
         conf = _as_uint16_array("conformer_indices", conformer_indices)
         rot = _as_uint16_array("rotamer_indices", rotamer_indices)
         if conf.shape != rot.shape:
-            raise ValueError("conformer_indices and rotamer_indices must have same shape")
+            raise ValueError(
+                "conformer_indices and rotamer_indices must have same shape"
+            )
 
         translations = np.asarray(translations, dtype=np.int16)
         if translations.ndim != 2 or translations.shape[1] != 3:
@@ -431,19 +441,25 @@ class PoseStreamAccumulator:
             conf = _as_uint16_array("conformer_indices", conf)
             rot = _as_uint16_array("rotamer_indices", rot)
             if conf.shape != rot.shape:
-                raise ValueError("conformer_indices and rotamer_indices must have same shape")
+                raise ValueError(
+                    "conformer_indices and rotamer_indices must have same shape"
+                )
             trans = np.asarray(trans, dtype=np.int16)
             if trans.ndim != 2 or trans.shape[1] != 3:
                 raise ValueError("translations must be a [N,3] array")
             if len(trans) != len(conf):
-                raise ValueError("translations length must match conformer/rotamer indices")
+                raise ValueError(
+                    "translations length must match conformer/rotamer indices"
+                )
 
             if self._canonical_centers and center is None:
                 codes = canonical_center_codes(trans)
                 if len(codes) > 1 and np.any(codes[1:] != codes[0]):
                     order = np.argsort(codes, kind="stable")
                     sorted_codes = codes[order]
-                    boundaries = np.flatnonzero(sorted_codes[1:] != sorted_codes[:-1]) + 1
+                    boundaries = (
+                        np.flatnonzero(sorted_codes[1:] != sorted_codes[:-1]) + 1
+                    )
                     starts = np.concatenate(([0], boundaries))
                     stops = np.concatenate((boundaries, [len(order)]))
                     subbatches = []
@@ -478,24 +494,41 @@ class PoseStreamAccumulator:
 
         poses_path, offsets_path = self._current_paths()
         self._outdir.mkdir(parents=True, exist_ok=True)
+        materialized_poses_path = poses_path
+        tmp_npy_path: Path | None = None
+        if self._zstd:
+            with tempfile.NamedTemporaryFile(
+                prefix="poses_materialized_", suffix=".npy", delete=False
+            ) as handle:
+                tmp_npy_path = Path(handle.name)
+            materialized_poses_path = tmp_npy_path
 
-        poses_mmap = np.lib.format.open_memmap(
-            poses_path,
-            mode="w+",
-            dtype=np.uint16,
-            shape=(self._pose_count, 3),
-        )
-        chunk_rows = 5_000_000
-        with self._tmp_path.open("rb") as handle:
-            row = 0
-            while row < self._pose_count:
-                nrows = min(chunk_rows, self._pose_count - row)
-                buf = np.fromfile(handle, dtype=np.uint16, count=nrows * 3)
-                if len(buf) != nrows * 3:
-                    raise ValueError("Unexpected EOF while materializing poses.npy")
-                poses_mmap[row : row + nrows] = buf.reshape((nrows, 3))
-                row += nrows
-        del poses_mmap
+        try:
+            poses_mmap = np.lib.format.open_memmap(
+                materialized_poses_path,
+                mode="w+",
+                dtype=np.uint16,
+                shape=(self._pose_count, 3),
+            )
+            chunk_rows = 5_000_000
+            with self._tmp_path.open("rb") as handle:
+                row = 0
+                while row < self._pose_count:
+                    nrows = min(chunk_rows, self._pose_count - row)
+                    buf = np.fromfile(handle, dtype=np.uint16, count=nrows * 3)
+                    if len(buf) != nrows * 3:
+                        raise ValueError(
+                            f"Unexpected EOF while materializing {poses_path.name}"
+                        )
+                    poses_mmap[row : row + nrows] = buf.reshape((nrows, 3))
+                    row += nrows
+            del poses_mmap
+
+            if self._zstd:
+                _compress_pose_npy_file(materialized_poses_path, poses_path)
+        finally:
+            if tmp_npy_path is not None and tmp_npy_path.exists():
+                tmp_npy_path.unlink()
 
         offsets_arr = np.array(self._offsets, dtype=np.int16)
         if self._canonical_centers:
@@ -532,7 +565,11 @@ class PoseStreamAccumulator:
         if self.total_poses == 0:
             poses_path, offsets_path = self._current_paths()
             self._outdir.mkdir(parents=True, exist_ok=True)
-            np.save(poses_path, np.empty((0, 3), dtype=np.uint16))
+            _write_pose_array_file(
+                poses_path,
+                np.empty((0, 3), dtype=np.uint16),
+                zstd=self._zstd,
+            )
             _write_offsets_file(
                 offsets_path,
                 np.zeros((3,), dtype=np.int16),
@@ -575,9 +612,7 @@ def pack_all_poses(
 
     _, tdata = gather_discrete_offsets(translation_lists)
     if len(conf) != len(tdata):
-        raise ValueError(
-            "Input indices length must match gathered translation length"
-        )
+        raise ValueError("Input indices length must match gathered translation length")
     return pack_expanded_poses(conf, rot, tdata)
 
 
@@ -609,7 +644,9 @@ def unpack_poses(
     return conformer_indices, rotamer_indices, offset_indices, offset_table
 
 
-def _write_offsets_file(path: Path, mean_offset: np.ndarray, offsets: np.ndarray) -> None:
+def _write_offsets_file(
+    path: Path, mean_offset: np.ndarray, offsets: np.ndarray
+) -> None:
     mean_offset = np.asarray(mean_offset, dtype=np.int16)
     if mean_offset.shape != (3,):
         raise ValueError("mean_offset must have shape (3,)")
@@ -657,9 +694,70 @@ def write_pose_files(
     return written
 
 
+def _is_compressed_pose_name(name: str) -> bool:
+    return name.endswith(_POSE_ZSTD_SUFFIX)
+
+
+def _compressed_pose_suffixes_text() -> str:
+    return _POSE_ZSTD_SUFFIX
+
+
+def _require_zstandard(action: str):
+    try:
+        import zstandard as zstd
+    except ImportError as exc:
+        raise ImportError(
+            f"zstandard is required to {action} compressed pose files "
+            f"({_compressed_pose_suffixes_text()})"
+        ) from exc
+    return zstd
+
+
+def _compress_pose_npy_file(source_path: Path, target_path: Path) -> None:
+    zstd = _require_zstandard("write")
+    with tempfile.NamedTemporaryFile(
+        prefix=f"{target_path.stem}.",
+        suffix=f"{target_path.suffix}.tmp",
+        dir=target_path.parent,
+        delete=False,
+    ) as handle:
+        tmp_target_path = Path(handle.name)
+    try:
+        with source_path.open("rb") as src, tmp_target_path.open("wb") as dst:
+            zstd.ZstdCompressor().copy_stream(src, dst)
+        tmp_target_path.replace(target_path)
+    finally:
+        if tmp_target_path.exists():
+            tmp_target_path.unlink()
+
+
+def _write_pose_array_file(
+    path: Path, poses: np.ndarray, *, zstd: bool = False
+) -> None:
+    poses = np.asarray(poses, dtype=np.uint16)
+    if not zstd:
+        np.save(path, poses)
+        return
+
+    with tempfile.NamedTemporaryFile(
+        prefix="poses_write_", suffix=".npy", delete=False
+    ) as handle:
+        tmp_npy_path = Path(handle.name)
+    try:
+        np.save(tmp_npy_path, poses)
+        _compress_pose_npy_file(tmp_npy_path, path)
+    finally:
+        if tmp_npy_path.exists():
+            tmp_npy_path.unlink()
+
+
+def _pose_path_priority(path: Path) -> int:
+    return 1 if path.name.endswith(_POSE_ZSTD_SUFFIX) else 0
+
+
 def pose_index_from_name(name: str) -> int | None:
-    if name.endswith(".npy.zst"):
-        base = name[:-4]
+    if name.endswith(_POSE_ZSTD_SUFFIX):
+        base = name[: -len(".zst")]
     elif name.endswith(".npy"):
         base = name
     else:
@@ -678,7 +776,7 @@ def discover_pose_pairs(directory: str | Path) -> list[tuple[Path, Path]]:
         raise FileNotFoundError(f"Pose directory not found: {directory}")
 
     pose_files = list(directory.glob("poses-*.npy")) + list(
-        directory.glob("poses-*.npy.zst")
+        directory.glob(f"poses-*{_POSE_ZSTD_SUFFIX}")
     )
     if not pose_files:
         raise FileNotFoundError(f"No pose files found in {directory}")
@@ -688,11 +786,15 @@ def discover_pose_pairs(directory: str | Path) -> list[tuple[Path, Path]]:
         index = pose_index_from_name(pose_path.name)
         if index is None:
             continue
-        if index not in indexed or indexed[index].name.endswith(".npy.zst"):
+        if index not in indexed or _pose_path_priority(pose_path) > _pose_path_priority(
+            indexed[index]
+        ):
             indexed[index] = pose_path
 
     if not indexed:
-        raise FileNotFoundError(f"No poses-*.npy found in {directory}")
+        raise FileNotFoundError(
+            f"No poses-*.npy or poses-*{_POSE_ZSTD_SUFFIX} files found in {directory}"
+        )
 
     pairs: list[tuple[Path, Path]] = []
     for index in sorted(indexed):
@@ -706,14 +808,10 @@ def discover_pose_pairs(directory: str | Path) -> list[tuple[Path, Path]]:
 
 def open_pose_array(path: str | Path) -> np.ndarray:
     path = Path(path)
-    if path.name.endswith(".npy.zst"):
-        try:
-            import zstandard as zstd
-        except ImportError as exc:
-            raise ImportError("zstandard is required to read .npy.zst pose files") from exc
+    if _is_compressed_pose_name(path.name):
+        zstd = _require_zstandard("read")
         with path.open("rb") as compressed:
-            dctx = zstd.ZstdDecompressor()
-            with dctx.stream_reader(compressed) as reader:
+            with zstd.ZstdDecompressor().stream_reader(compressed) as reader:
                 decompressed = reader.read()
         return np.load(io.BytesIO(decompressed))
 
@@ -731,9 +829,12 @@ def load_offset_table(path: str | Path) -> np.ndarray:
     return offsets_int8.astype(np.int16) + mean_offset.astype(np.int16)
 
 
-def read_pose_files(outdir: str | Path) -> list[tuple[np.ndarray, np.ndarray, np.ndarray]]:
+def read_pose_files(
+    outdir: str | Path,
+) -> list[tuple[np.ndarray, np.ndarray, np.ndarray]]:
     """
-    Read poses-*.npy (or poses-*.npy.zst) and offsets-*.dat files from a directory.
+    Read poses-*.npy (or compressed poses-*.npy.zst) and offsets-*.dat files from
+    a directory.
     Returns a list of (poses, mean_offset, offsets) tuples.
     """
     results: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []

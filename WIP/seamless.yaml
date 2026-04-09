@@ -1,0 +1,4 @@
+- project: sandbox
+- execution: remote
+- cluster: local
+- remote: jobserver

@@ -11,10 +11,16 @@ sys.path.append(here)
 from pose_test_data import generate_pose_test_data
 from poses import (
     PoseStreamAccumulator,
+    (
+    PoseStreamAccumulator,
     pack_all_poses,
+   
     read_pose_files,
+   
     unpack_poses,
+   
     write_pose_files,
+),
 )
 
 
@@ -138,3 +144,36 @@ def test_pose_stream_accumulator_emits_canonical_centers_by_default():
         (original[:, 4], original[:, 3], original[:, 2], original[:, 1], original[:, 0])
     )
     assert np.array_equal(reconstructed[recon_sort], original[orig_sort])
+
+
+def test_pose_stream_accumulator_zstd_roundtrip():
+    data = generate_pose_test_data()
+    conf_indices = data["conf_indices"]
+    rot_indices = data["rot_indices"]
+    tinds, tdata = data["gathered"]
+
+    conf_expanded = conf_indices[tinds]
+    rot_expanded = rot_indices[tinds]
+
+    with tempfile.TemporaryDirectory(prefix="pose_stream_zstd_") as tmpdir:
+        writer = PoseStreamAccumulator(tmpdir, zstd=True)
+        writer.add_chunk(conf_expanded, rot_expanded, tdata)
+        written = writer.finish()
+        writer.cleanup()
+
+        assert len(written) == 1
+        poses_path, offsets_path = written[0]
+        assert poses_path.name == "poses-1.npy.zst"
+        assert poses_path.exists()
+        assert offsets_path.name == "offsets-1.dat"
+
+        loaded = read_pose_files(tmpdir)
+
+    assert len(loaded) == 1
+    poses, mean_offset, offsets = loaded[0]
+    conf2, rot2, off_idx2, offset_table = unpack_poses(poses, mean_offset, offsets)
+
+    assert np.array_equal(conf2, conf_expanded)
+    assert np.array_equal(rot2, rot_expanded)
+    reconstructed = offset_table[off_idx2.astype(np.int64)]
+    assert np.array_equal(reconstructed, tdata)

@@ -1,0 +1,11 @@
++ output=1b7f-frag3-bwd
++ NONCE=1
++ seamless-run -y --conda alaric --var nonce=1 -I code/stack.py.DEPS.txt --prologue 'rm -rf /ramscratch/1b7f-frag3-bwd' ' python3 -u code/stack.py --sequence UG --protein pdbs/1b7f_dom2.pdb   --pdb-exclude 1b7f   --resid 256 --first   --angle 24 --dihedral -45 45   --output /ramscratch/1b7f-frag3-bwd   && seamless-checksum-index /ramscratch/1b7f-frag3-bwd && cat /ramscratch/1b7f-frag3-bwd.INDEX'
+Launch database server...
+2026-03-12 19:13:13,877 INFO remote_http_launcher: SSHExecutor[mbi-frontend.bastion] probing for conda on PATH
+2026-03-12 19:13:13,877 INFO remote_http_launcher: SSHExecutor[mbi-frontend.bastion] executing bash over SSH: command -v conda >/dev/null 2>&1
+2026-03-12 19:13:15,578 INFO remote_http_launcher: SSHExecutor[mbi-frontend.bastion] FINISHED executing bash over SSH: command -v conda >/dev/null 2>&1
+2026-03-12 19:13:15,578 INFO remote_http_launcher: SSHExecutor[mbi-frontend.bastion] scraping ~/.bashrc for conda initialize block
+2026-03-12 19:13:15,578 INFO remote_http_launcher: SSHExecutor[mbi-frontend.bastion] executing bash over SSH: cat ~/.bashrc
+2026-03-12 19:13:16,238 INFO remote_http_launcher: SSHExecutor[mbi-frontend.bastion] FINISHED executing bash over SSH: cat ~/.bashrc
+2026-03-12 19:13:16,238 INFO remote_http_launcher: SSHExecutor[mbi-frontend.bastion] discovered conda.sh via ~/.bashrc at /users/sdevries/miniforge3/etc/profile.d/conda.sh

@@ -1,0 +1,4000 @@
+ 1084  ./calc-pi-nesting.sh 10 1100001
+ 1085  ./calc-pi-nesting.sh 10 2100001
+ 1086  ./calc-pi-nesting.sh 10 5100001
+ 1087  ./calc-pi-nesting.sh 10 10000001
+ 1088  ./calc-pi-nesting.sh 10 30000001
+ 1089  ./calc-pi-nesting.sh 10 100000001
+ 1090  ./calc-pi-nesting.sh 10 100000002
+ 1091  ./calc-pi-nesting.sh 10 50000002
+ 1092  ./calc-pi-nesting.sh 10 100000003
+ 1093  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1094  seamless-init 
+ 1095  ./calc-pi-nesting.sh 10 100000004
+ 1096  ./calc-pi-nesting.sh 10 100000005
+ 1097  ./nesting.sh 
+ 1098  ps -elf | grep daskserver
+ 1099  kill 1624891
+ 1100  ./nesting.sh 
+ 1101  ps -elf | grep daskserver
+ 1102  kill 1628938
+ 1103  printenv | grep SEAMLESS
+ 1104  seamless-init 
+ 1105  ./nesting.sh 
+ 1106  seamless-init 
+ 1107  ./nesting.sh 
+ 1108  seamless-run './nesting.sh'
+ 1109  seamless-run -vvv './nesting.sh'
+ 1110  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1111  seamless-run -vvv './nesting.sh'
+ 1112  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1113  seamless-run -vvv './nesting.sh'
+ 1114  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1115  seamless-run -vvv './nesting.sh'
+ 1116  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1117  seamless-init 
+ 1118  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1119  seamless-init 
+ 1120  seamless-run -vvv './nesting.sh'
+ 1121  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1122  seamless-run -vvv './nesting.sh'
+ 1123  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1124  seamless-run -vvv './nesting.sh'
+ 1125  seamless-init 
+ 1126  seamless-run -vvv './nesting.sh'
+ 1127  seamless-run './nesting.sh'
+ 1128  seamless-run './nested.sh | awk '\''{print "LINE " $0}'\'' '
+ 1129  seamless-run './nesting.sh'
+ 1130  seamless-init 
+ 1131  seamless-run './nesting.sh'
+ 1132  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1133  seamless-init 
+ 1134  seamless-run './nesting.sh'
+ 1135  printenv | grep SEAMLESS
+ 1136  seamless-run './nesting.sh'
+ 1137  less ~/.remote-http-launcher/server/daskserver-local-rw-cmd-test.log 
+ 1138  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1139  seamless-init 
+ 1140  seamless-run './nesting.sh'
+ 1141  less ~/.remote-http-launcher/server/daskserver-local-rw-cmd-test.log 
+ 1142  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1143  seamless-init 
+ 1144  seamless-run './nesting.sh'
+ 1145  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1146  seamless-init 
+ 1147  seamless-run './nesting.sh'
+ 1148  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1149  seamless-init 
+ 1150  seamless-run './nesting.sh'
+ 1151  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1152  seamless-init 
+ 1153  seamless-run './nesting.sh'
+ 1154  code seamless.yaml 
+ 1155  seamless-run './nesting.sh'
+ 1156  seamless-run 'bash -x nesting.sh'
+ 1157  seamless-run 'bash nesting.sh'
+ 1158  seamless-run 'bash nesting.sh nested.sh'
+ 1159  seamless-init 
+ 1160  seamless-run 'bash nesting.sh nested.sh'
+ 1161  seamless-init 
+ 1162  seamless-run 'bash nesting.sh nested.sh '
+ 1163  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1164  seamless-run 'bash nesting.sh nested.sh '
+ 1165  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1166  seamless-run 'bash nesting.sh nested.sh '
+ 1167  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1168  seamless-run 'bash nesting.sh nested.sh '
+ 1169  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1170  seamless-init 
+ 1171  seamless-run 'bash nesting.sh nested.sh '
+ 1172  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1173  seamless-init 
+ 1174  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1175  seamless-init 
+ 1176  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1177  seamless-init 
+ 1178  seamless-run 'bash nesting.sh nested.sh '
+ 1179  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1180  seamless-init 
+ 1181  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1182  seamless-init 
+ 1183  seamless-run 'bash nesting.sh nested.sh '
+ 1184  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1185  seamless-init 
+ 1186  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1187  seamless-init 
+ 1188  seamless-run 'bash nesting.sh nested.sh '
+ 1189  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1190  seamless-init 
+ 1191  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1192  seamless-init 
+ 1193  seamless-run 'bash nesting.sh nested.sh '
+ 1194  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1195  seamless-init 
+ 1196  seamless-run 'bash nesting.sh nested.sh '
+ 1197  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1198  seamless-init 
+ 1199  seamless-run 'bash nesting.sh nested.sh '
+ 1200  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1201  seamless-init 
+ 1202  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1203  seamless-init 
+ 1204  seamless-run 'bash nesting.sh nested.sh '
+ 1205  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1206  seamless-init 
+ 1207  seamless-run 'bash nesting.sh nested.sh '
+ 1208  python3 -c 'import seamless'
+ 1209  python3 -c 'import seamless.checksum'
+ 1210  python3 -c 'import seamless.checksum.calculate_checksum'
+ 1211  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1212  seamless-init 
+ 1213  seamless-run 'bash nesting.sh nested.sh '
+ 1214  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1215  seamless-init 
+ 1216  seamless-run 'bash nesting.sh nested.sh  '
+ 1217  rm calc_pi.job-* -f
+ 1218  ls
+ 1219  rm calc_pi-nested.job-* -f
+ 1220  rm nesting.sh nested.sh -f
+ 1221  ./calc-pi-nesting.sh 
+ 1222  ./calc-pi-nesting.sh 10 10000
+ 1223  ./calc-pi-nesting.sh 10 1000000
+ 1224  ./calc-pi-nesting.sh 10 10000000
+ 1225  ./calc-pi-nesting.sh 100 100000000
+ 1226  ./calc-pi-nesting.sh 102 100000000
+ 1227  ./calc-pi-nesting.sh 30 100000001
+ 1228  conda activate seamless1
+ 1229  htop
+ 1230  cd seamless-config/
+ 1231  pip install -e .
+ 1232  htop
+ 1233  git push
+ 1234  conda activate base
+ 1235  git push
+ 1236  exit
+ 1237  gh create
+ 1238  gh repo create
+ 1239  cd ..
+ 1240  rm -rf crocodile-lab/
+ 1241  gh repo create
+ 1242  cd crocodile-lab/
+ 1243  ls
+ 1244  code LICENSE 
+ 1245  code README
+ 1246  cp ~/nefertiti/nefertiti/functions/superimpose.py .
+ 1247  code superimpose.py 
+ 1248  conda activate base
+ 1249  cp ~/nefertiti/nefertiti/functions/write_pdb.py .
+ 1250  cp ~/nefertiti/nefertiti/functions/parse_pdb.py .
+ 1251  code write_pdb.py 
+ 1252  cp ~/nefertiti/nefertiti/functions/parse_pdb.py .
+ 1253  cp ~/data/work/nucleotide-repositories/nucleotide-fragment-templates/A.pdb .
+ 1254  cp ~/data/work/nucleotide-repositories/nucleotide-library/library/dinuc-CA-0.5.npy .
+ 1255  cp ~/data/work/nucleotide-repositories/nucleotide-library/library/dinuc-AC-0.5.npy .
+ 1256  code .gitignore 
+ 1257  which seamless-checksum 
+ 1258  cp ~/seamless1/seamless-base/bin/seamless-checksum $(which seamless-checksum)
+ 1259  seamless-checksum dinuc-AC-0.5.npy 
+ 1260  seamless-checksum --hepl
+ 1261  seamless-checksum --help
+ 1262  seamless-checksum dinuc-AC-0.5.npy > dinuc-AC-0.5.npy.CHECKSUM
+ 1263  seamless-checksum dinuc-CA-0.5.npy > dinuc-CA-0.5.npy.CHECKSUM
+ 1264  head dinuc-*CHECKSUM
+ 1265  code select-library.py
+ 1266  wc -l A.pdb 
+ 1267  python3 select-library.py 
+ 1268  ls
+ 1269  head -n 1 libP.npy 
+ 1270  head -n 1 libPP.npy 
+ 1271  code fit-bruteforce.py
+ 1272  python3 kabsch-all.py 
+ 1273  ;s
+ 1274  ls
+ 1275  python3 select-library.py 
+ 1276  ls *.py
+ 1277  python3 kabsch-all.py 
+ 1278  code PIPELINE.txt
+ 1279  python3 fit-bruteforce.py 
+ 1280  head -n 1 fit-bruteforce.npy 
+ 1281  ipython3
+ 1282  code test1.py
+ 1283  ls
+ 1284  python3 test1.py 
+ 1285  code test1.png 
+ 1286  python3 test1.py 
+ 1287  code test1.png 
+ 1288  python3 test1.py 
+ 1289  code test1.png 
+ 1290  python3 test1.py 
+ 1291  code test1.png 
+ 1292  python3 test1.py 
+ 1293  cp test1.py test2.py
+ 1294  python3 test1.py 
+ 1295  mv test2.py testX.py
+ 1296  code test2.py
+ 1297  python3 test1.py 
+ 1298  python3 test2.py 
+ 1299  code test2.p
+ 1300  code test2.png 
+ 1301  python3 test2.py 
+ 1302  code test2.png 
+ 1303  python3 test2.py 
+ 1304  rm PQd0.npy 
+ 1305  python3 kabsch-all.py 
+ 1306  code testX.py 
+ 1307  code test3.py 
+ 1308  mv testX.py test3.py
+ 1309  code test3.py 
+ 1310  conda activate base
+ 1311  conda activate seamless1
+ 1312  cd seamless-transformer/tests/cmd/
+ 1313  cat ./calc-pi-nesting.sh 
+ 1314  ./calc-pi-nesting.sh 100 1000000
+ 1315  seamless-init 
+ 1316  ./calc-pi-nesting.sh 100 1000000
+ 1317  rm ~/.remote-http-launcher/client/* -f
+ 1318  seamless-init 
+ 1319  ./calc-pi-nesting.sh 100 1000000
+ 1320  rm ~/.remote-http-launcher/client/* -f
+ 1321  seamless-init 
+ 1322  ./calc-pi-nesting.sh 100 1000000
+ 1323  ./calc-pi-nesting.sh 100 10000000
+ 1324  ./calc-pi-nesting.sh 100 100000000
+ 1325  ./calc-pi-nesting.sh 200 1000000000
+ 1326  ./calc-pi-nesting.sh 1000 300000000
+ 1327  ./calc-pi-nesting.sh 100 300000001
+ 1328  ./calc-pi-nesting.sh 1000 300000001
+ 1329  ./calc-pi-nesting.sh 2000 100000000
+ 1330  ./calc-pi-nesting.sh 2000 100000008
+ 1331  ./calc-pi-nesting.sh 2000 1000000008
+ 1332  conda activate hashserver
+ 1333  ls *auth*
+ 1334  less allpdb-chain-auth.json.CHECKSUM 
+ 1335  ls */allpdb-chain-auth.json
+ 1336  less intermediate/allpdb-chain-auth.json 
+ 1337  ipython3
+ 1338  ls
+ 1339  conda activate seamless-exact
+ 1340  code summarize_header.py 
+ 1341  less allpdb-summarize-header.py 
+ 1342  less summarize_header_keys.txt 
+ 1343  ls
+ 1344  less allpdb-segments.txt 
+ 1345  less allpdb-keyorder.json
+ 1346  wc -l allpdb-keyorder.json
+ 1347  wc -l allpdb-segments.txt 
+ 1348  grep allpdb-segments *.py
+ 1349  less allpdb-detect-segments.py 
+ 1350  less allpdb-struc-index.json
+ 1351  wc -l allpdb-struc-index.json
+ 1352  wc -l allpdb-segments.txt 
+ 1353  less allpdb-segments.txt 
+ 1354  ls
+ 1355  less allpdb-detect-interfaces.py 
+ 1356  grep allpdb-interfaces *.py
+ 1357  less filter-interfaces.py 
+ 1358  du -sh allpdb-filtered-interfaces.mixed
+ 1359  head -n 2 allpdb-filtered-interfaces.mixed
+ 1360  conda activate seamless-exact
+ 1361  python3 filter-interfaces.py 
+ 1362  python3 summarize_header.py 
+ 1363  cd /tmp/
+ 1364  conda activate seamless-exact
+ 1365  pymol --help
+ 1366  pymol -d 'set cif_use_auth, off'
+ 1367  pymol --help
+ 1368  pymol --help | less
+ 1369  pymol -d 'set cif_use_auth, off'
+ 1370  pymol --help | less
+ 1371  pymol -d 'set cif_use_auth, off'
+ 1372  pymol -d set cif_use_auth, off
+ 1373  pymol -d 'set("cif_use_auth", "off")'
+ 1374  pymol -d 'set "cif_use_auth", "off"'
+ 1375  pymol -d 'set "cif_use_auth" "off"'
+ 1376  pymol -d 'set cif_use_auth off'
+ 1377  pymol -d 'cif_use_auth=off'
+ 1378  pymol -d 'cif_use_auth=0'
+ 1379  pymol -d 'cmd.set("cif_use_auth","off")'
+ 1380  pymol -d 'cmd.set("cif_use_auth","off")' ~/1b7f.cif 
+ 1381  pymol ~/1b7f.cif 
+ 1382  conda activate hashserver
+ 1383  conda activate hashserver
+ 1384  code test4.py
+ 1385  python3 kabsch-all.py 
+ 1386  python3 select-library.py 
+ 1387  python3 kabsch-all.py 
+ 1388  ls
+ 1389  python3 fit-bruteforce.py 
+ 1390  python3 test3.py 
+ 1391  code test3.png 
+ 1392  python3 test3.py 
+ 1393  code test3.png 
+ 1394  python3 test3.py 
+ 1395  code test3.png 
+ 1396  ls
+ 1397  python3 test3.py 
+ 1398  python3 test4.py 
+ 1399  ls
+ 1400  code select-library.py 
+ 1401  python3 select-library.py 
+ 1402  python3 kabsch-all.py 
+ 1403  python3 fit-bruteforce.py 
+ 1404  df -h
+ 1405  python3 fit-bruteforce.py 
+ 1406  python3 test3.py 
+ 1407  python3 test4.py 
+ 1408  seamless-checksum fit-bruteforce.npy > fit-bruteforce.npy.CHECKSUM
+ 1409  ls
+ 1410  ls -l fit-bruteforce.npy.gz 
+ 1411  du -sh fit-bruteforce.npy.gz 
+ 1412  du -sh fit-cache.npz 
+ 1413  rm fit-cache.npz 
+ 1414  ls -lt
+ 1415  ls -lt *npz
+ 1416  ls -lt | head
+ 1417  du -sh fit-cache.npz 
+ 1418  du -s fit-cache.npz 
+ 1419  htop
+ 1420  conda activate hashserver
+ 1421  less 1B7F-stack/frag3-stack/README 
+ 1422  cd 1B7F-stack/
+ 1423  head -n 1 *.npy
+ 1424  ls
+ 1425  cd frag3-stack/
+ 1426  ls
+ 1427  less README 
+ 1428  less RESULT 
+ 1429  head -n 1 rotaconformer-mask.npy 
+ 1430  ipython3
+ 1431  python3
+ 1432  conda deactivate
+ 1433  python3
+ 1434  ipython3
+ 1435  conda activate hashserver
+ 1436  pconda activate /home/sjoerd/miniconda3/envs/seamless-exact
+ 1437  ls *.png
+ 1438  code plot-angle-corrected-vector.png 
+ 1439  ls *.png
+ 1440  code plot-angle-z-vector.png 
+ 1441  code plot-dihedrals.png 
+ 1442  ls
+ 1443  ls ~/data/work/crocodile/*/*ring*
+ 1444  ls ~/data/work/crocodile/*/*.py
+ 1445  less  ~/data/work/crocodile/util/filter-rotamers-stacking-angle.py 
+ 1446  less  ~/data/work/crocodile/util/calc-stacking-angle.py 
+ 1447  less  ~/data/work/crocodile/util/pseudo-crocodile-2stack.py 
+ 1448  conda activate /home/sjoerd/miniconda3/envs/seamless-exact
+ 1449  conda activate seamless-exact
+ 1450  yhconda activate seamless-exact
+ 1451  python3 pair-freq-words.py 
+ 1452  python3 pair-freq-words.py > pair-freq-words.txt
+ 1453  code pair-freq-words.txt 
+ 1454  python3 pair-freq-words.py | tee pair-freq-words.txt
+ 1455  code pair-freq-words.txt 
+ 1456  python3 pair-freq-words.py | tee pair-freq-words.txt
+ 1457  rm word_matrix_*
+ 1458  python3 pair-freq-words.py | tee pair-freq-words.txt
+ 1459  code generate-words.py
+ 1460  python3 pair-freq-words.py | tee pair-freq-words.txt
+ 1461  python3 pair-freq-words.py |& less
+ 1462  ipython3
+ 1463  python3 pair-freq-words.py |& less
+ 1464  python3 pair-freq-words.py > pair-freq-words.txt 
+ 1465  ls 
+ 1466  git status
+ 1467  python3 generate-words.py 
+ 1468  python3 generate-words.py
+ 1469  python3 generate-words.py > x
+ 1470  code x
+ 1471  awk 'length($1) == 2' x | wc -l
+ 1472  wc -l x
+ 1473  python3 generate-words.py 
+ 1474  [A
+ 1475  python3 generate-words.py 
+ 1476  python3 generate-words.py -
+ 1477  python3 generate-words.py > x 2>&1
+ 1478  code x
+ 1479  python3 generate-words.py 
+ 1480  python3 generate-words.py > x 2>&1
+ 1481  python3 generate-words.py
+ 1482  python3 generate-words.py > x 2>&1
+ 1483  code x
+ 1484  python3 generate-words.py > x 2>&1
+ 1485  code x
+ 1486  python3 generate-words.py > x 2>&1
+ 1487  code x
+ 1488  python3 generate-words.py 
+ 1489  python3 generate-words.py  > x
+ 1490  sort -k1 x | less
+ 1491  wc -l x
+ 1492  awk 'length($2)==2' x | wc -l
+ 1493  awk 'length($1)==2' x | wc -l
+ 1494  python3 generate-words.py  
+ 1495  cd ../nucleotide-stacking-interaction
+ 1496  code .
+ 1497  cd ../nucleotide-library-fit/
+ 1498  python3 generate-words.py  
+ 1499  cd ../nucleotide-library-fit/
+ 1500  python3 generate-words.py  [A
+ 1501  [A
+ 1502  python3 generate-words.py  
+ 1503  python3 pair-freq-words.py 
+ 1504  python3 generate-words.py  
+ 1505  python3 generate-words.py  >& x
+ 1506  [A
+ 1507  python3 generate-words.py  >& x
+ 1508  python3 generate-words.py 
+ 1509  python3 generate-words.py  >& x
+ 1510  python3 generate-words.py 
+ 1511  python3 generate-words.py  >& x
+ 1512  conda activate seamless-exact
+ 1513  python3 generate-words.py  
+ 1514  pip install scipy
+ 1515  python3 -c 'from scipy.special import logcumsumexp'
+ 1516  conda list scipy
+ 1517  python3 generate-words.py  
+ 1518  htop
+ 1519  conda activate seamless-exact
+ 1520  htop
+ 1521  conda activate seamless-exact
+ 1522  conda activate crocodile
+ 1523  code ~/crocodile-test/crocodile_library_config.py 
+ 1524  git status
+ 1525  git diff
+ 1526  git status
+ 1527  code .gitignore 
+ 1528  git status
+ 1529  git commit -am 'snapshot OLD CODE'
+ 1530  git push
+ 1531  git log
+ 1532  cd ..
+ 1533  cp -r crocodile crocodile-OLD
+ 1534  du -sh crocodile-OLD/
+ 1535  du -sh crocodile-OLD/*
+ 1536  cd crocodile
+ 1537  git log
+ 1538  git push loria
+ 1539  git log
+ 1540  git 
+ 1541  git reset 622353 --hard
+ 1542  ls
+ 1543  EMPTY_ROOT=$(git commit-tree $(git hash-object -t tree /dev/null) -m "root: empty state")
+ 1544  git rebase --onto "$EMPTY_ROOT" --root main
+ 1545  git push --force-with-lease origin main
+ 1546  git push --force-with-lease loria main
+ 1547  git log
+ 1548  git branch old
+ 1549  git push origin old
+ 1550  git log
+ 1551  git push loria old
+ 1552  git log
+ 1553  git statis
+ 1554  git status
+ 1555  git log
+ 1556  git reset 458239f301 --hard
+ 1557  ls
+ 1558  rm -rf WIP/ crocodile/ test/ util/
+ 1559  git reset 458239f301 --hard
+ 1560  git push
+ 1561  git push --force
+ 1562  git push loria --force
+ 1563  conda activate crocodile
+ 1564  conda activate base
+ 1565  cp test6.py test-make-rotaconformers.py
+ 1566  code test-make-rotaconformers.py 
+ 1567  python3 test-make-rotaconformers.py 
+ 1568  code .gitignore 
+ 1569  conda activate base
+ 1570  conda activate seamless1
+ 1571  cd seamless-transformer/
+ 1572  cd tests/
+ 1573  cd dask/
+ 1574  cp test_transformation.py test_scratch.py
+ 1575  code test_scratch.py 
+ 1576  conda activate seamless1
+ 1577  conda activate base
+ 1578  cd ../seamless1/seamless-transformer/tests/
+ 1579  code test_py_module.py
+ 1580  code testmodule.py
+ 1581  conda activate seamless1
+ 1582  pytest -s test_py_module.py 
+ 1583  ls
+ 1584  less test_spawn.py 
+ 1585  pytest -s test_transformer.py 
+ 1586  pytest -s test_py_module.py 
+ 1587  pytest -s test_py_module.py::test_func4 
+ 1588  ls
+ 1589  code seamless.yaml .seamless.yaml 
+ 1590  pytest -s test_py_module.py
+ 1591  for i in *.py; do echo $i; pytest -s $i; done
+ 1592  for i in test_*.py; do echo $i; pytest -s $i; done
+ 1593  ls
+ 1594  cp test_py_module.py dask/
+ 1595  cd dask/
+ 1596  code test_py_module.py test_transformer.py 
+ 1597  grep config *.py
+ 1598  grep config ../*.py
+ 1599  less .seamless.yaml 
+ 1600  less seamless.yaml 
+ 1601  pytest -s test_py_module.py 
+ 1602  python3 -c 'import testmodule'
+ 1603  pytest -s test_py_module.py 
+ 1604  mv ../testmodule.py ../testingmodule.py
+ 1605  ln -s ../testingmodule.py 
+ 1606  pytest -s test_py_module.py 
+ 1607  cd ..
+ 1608  pytest -s test_py_module.py 
+ 1609  code test_py_module.py 
+ 1610  pytest -s test_py_module.py 
+ 1611  cd dask/
+ 1612  pytest -s test_py_module.py 
+ 1613  ipython3
+ 1614  seamless-init 
+ 1615  pytest -s test_scratch.py 
+ 1616  seamless-init 
+ 1617  pytest -s test_scratch.py 
+ 1618  conda activate base
+ 1619  aconda activate crocodile
+ 1620  conda activate seamless1
+ 1621  which seamless-checksum 
+ 1622  cat $(which seamless-checksum)
+ 1623  seamless-init exit
+ 1624  exit
+ 1625  conda activate crocodile
+ 1626  conda activate crocodile
+ 1627  code code/p*
+ 1628  cd code/
+ 1629  mv ppdb.py rna_pdb.py
+ 1630  ls
+ 1631  code library.py.DEPS.yaml 
+ 1632  grep import *.py | grep ppdb
+ 1633  code library.py
+ 1634  code library.py.DEPS.yaml 
+ 1635  code *.py
+ 1636  ls
+ 1637  python -c 'import library; library.config()'
+ 1638  pytest ../tests/test_library.py 
+ 1639  ls
+ 1640  cd ../tests/
+ 1641  pytest -s test_offsets.py 
+ 1642  pytest -s -v test_offsets.py 
+ 1643  pytest -s -vv test_offsets.py 
+ 1644  find .. -name '*.py'
+ 1645  find ../crocodile-OLD  -name '*.py'
+ 1646  ls -l ../crocodile-OLD
+ 1647  cd ..
+ 1648  ls -l ../crocodile-OLD
+ 1649  find ../crocodile-OLD  -name '*.py'
+ 1650  grep searchsorted `find ../crocodile-OLD  -name '*.py'`
+ 1651  ipython3
+ 1652  conda activate seamless1
+ 1653  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1654  rm ~/seamless-buffers/myproject/* -rf
+ 1655  cd seamless-transformer/tests/
+ 1656  seamless-init 
+ 1657  git status
+ 1658  pytest -s test_fingertip.py 
+ 1659  cd dask/
+ 1660  seamless-init 
+ 1661  pytest -s test_scratch.py 
+ 1662  code test_scratch.py 
+ 1663  cd ..
+ 1664  seamless-init 
+ 1665  pytest -s test_fingertip.py 
+ 1666  less .seamless.yaml 
+ 1667  less dask/.seamless.yaml 
+ 1668  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1669  ls -lt test* | less
+ 1670  grep stage test_fingertip.py 
+ 1671  seamless-init 
+ 1672  code seamless.yaml 
+ 1673  seamless-init --stage fingertip
+ 1674  pytest test_fingertip.py 
+ 1675  code dask/seamless.yaml 
+ 1676  cd dask/
+ 1677  pytest test_scratch.py 
+ 1678  seamless-init --stage persistent
+ 1679  ls *persist*
+ 1680  ls -lt test*
+ 1681  pytest -s test_scratch.py 
+ 1682  grep persistent test_*
+ 1683  grep set_stage test*.py
+ 1684  seamless-run-tcd ,,
+ 1685  cd ..
+ 1686  seamless-init --simple-remote
+ 1687  seamless-init --stagesimple-remote
+ 1688  seamless-init --stage simple-remote
+ 1689  cd persistent/
+ 1690  ls
+ 1691  cd ..
+ 1692  pytest -s persistent/test_scratch_persistent.py 
+ 1693  python persistent/scratch_persistent_write.py 
+ 1694  python persistent/scratch_persistent_verify.py 
+ 1695  pytest -s persistent/test_scratch_persistent.py 
+ 1696  python3 persistent/scratch_persistent_write.py 
+ 1697  ls /tmp/*scratch*.jsob
+ 1698  ls /tmp/*scratch*.json
+ 1699  ls /tmp/*/*scratch*.json
+ 1700  ls /tmp/*/scratch*.json
+ 1701  ls /tmp/*/*/scratch*.json
+ 1702  ls /tmp/*scratch*.json
+ 1703  ls /tmp/*/*/scratch*.json
+ 1704  less dask/test_scratch.py 
+ 1705  code dask/test_scratch.py 
+ 1706  cd dask/
+ 1707  pytest test_scratch.py 
+ 1708  pytest -s  test_scratch.py 
+ 1709  grep run-tra *.py
+ 1710  grep run-tra *../*/.py
+ 1711  grep run-tra ../*/.py
+ 1712  grep run-tra ../*/*.py
+ 1713  cd ..
+ 1714  code seamless.yaml 
+ 1715  code .seamless.yaml 
+ 1716  rm ~/seamless-buffers/* -rf
+ 1717  seamless-init --stage persistent
+ 1718  grep scratch *.py
+ 1719  code test_fingertip.py 
+ 1720  pytest -s test_fingertip.py 
+ 1721  grep scratch *.py
+ 1722  grep fingertip *.py
+ 1723  pytest -s test_fingertip.py 
+ 1724  seamless-init --stage persistent
+ 1725  seamless-init --stage persistent-test
+ 1726  pytest -s test_fingertip.py 
+ 1727  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1728  seamless-init --stage persistent-test
+ 1729  grep persistent *.py
+ 1730  code test_transformation_checksum.py 
+ 1731  pytest -s test_transformation_checksum.py 
+ 1732  seamless-init --stage fingertip
+ 1733  pytest -s test_fingertip.py 
+ 1734  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1735  rm ~/seamless-buffers/myproject -rf
+ 1736  seamless-init --stage fingertip
+ 1737  pytest -s test_fingertip.py 
+ 1738  code ~/seamless-buffers/myproject/STAGE-fingertip/a6/a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf 
+ 1739  cat  ~/seamless-buffers/myproject/STAGE-fingertip/53/53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3 
+ 1740  cat  ~/seamless-buffers/myproject/STAGE-fingertip/11/1121cfccd5913f0a63fec40a6ffd44ea64f9dc135c66634ba001d10bcf4302a2 
+ 1741  cat  ~/seamless-buffers/myproject/STAGE-fingertip/19/19441b5a4ee61589fcc9e8e411b956799d6a818574f5de70f362deed9c423cd2 
+ 1742  seamless-run-transformation --scratch --fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1743  seamless-run-transformation --stage fingertip --scratch --fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1744  pytest -s test_fingertip.py 
+ 1745  cat ~/.remote-http-launcher/server/database-local-rw-myproject--STAGE-fingertip.log 
+ 1746  cat ~/.remote-http-launcher/server/hashserver-local-rw-myproject--STAGE-fingertip.log 
+ 1747  sqlitebrowser ~/seamless-buffers/myproject/STAGE-fingertip/seamless.db 
+ 1748  bg
+ 1749  seamless-run-transformation --stage fingertip --scratch --fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1750  seamless-init --stage fingertip
+ 1751  seamless-run-transformation --stage fingertip --scratch --fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1752  seamless-resolve a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1753  seamless-resolve --stage fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1754  seamless-run-transformation --stage fingertip --scratch --fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1755  seamless-resolve --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4
+ 1756  seamless-resolve --fingertip --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4
+ 1757  seamless-download --fingertip
+ 1758  seamless-resolve --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4
+ 1759  seamless-fingertip --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4
+ 1760  seamless-fingertip --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4 -o z
+ 1761  seamless-fingertip --stage fingertip -o z  fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4 
+ 1762  seamless-fingertip --stage fingertip --output z  fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4 
+ 1763  cat z
+ 1764  seamless-upload z
+ 1765  seamless-upload --stage fingertip z
+ 1766  ls
+ 1767  cat z.CHECKSUM 
+ 1768  seamless-resolve --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4
+ 1769  conda activate seamless1
+ 1770  cd seamless-base/
+ 1771  pip install -e .
+ 1772  openssl 
+ 1773  openssl sha-256
+ 1774  ls
+ 1775  openssl sha-256 setup.cfg 
+ 1776  seamless-checksum setup.cfg 
+ 1777  cd ../seamless-remote/
+ 1778  pip install -e .
+ 1779  cd ../seamless-dask/
+ 1780  git status
+ 1781  cd seamless-base/
+ 1782  cd ..
+ 1783  cd seamless-transformer/
+ 1784  git status
+ 1785  git diff
+ 1786  diff seamless_transformer/worker.py  ../../seamless-transformer/seamless_transformer/worker.py 
+ 1787  cd ,,
+ 1788  cd ..
+ 1789  git status
+ 1790  cd seamless-base/
+ 1791  git status
+ 1792  cd ../
+ 1793  cd ../seamless-jobserver/
+ 1794  git log
+ 1795  git status
+ 1796  cd seamless-transformer/
+ 1797  git status
+ 1798  git diff
+ 1799  ls
+ 1800  cd ..
+ 1801  ls
+ 1802  git submodule foreach git reset --hard
+ 1803  git submodule foreach git pull origin main
+ 1804  rm seamless-base/bin/*
+ 1805  git submodule foreach git pull origin main
+ 1806  cd ../seamless-dask/
+ 1807  git submodule foreach git pull origin main
+ 1808  cd seamless-base/
+ 1809  git reset --hard
+ 1810  cd ..
+ 1811  git submodule foreach git pull origin main
+ 1812  rm seamless-base/bin/seamless-checksum-*
+ 1813  git submodule foreach git pull origin main
+ 1814  git status
+ 1815  cd seamless-transformer/
+ 1816  git pull origin main
+ 1817  git reset --hard
+ 1818  git pull origin main
+ 1819  cd ..
+ 1820  git status
+ 1821  git commit -am 'bump submodules'
+ 1822  git push
+ 1823  cd ../seamless-jobserver/
+ 1824  git status
+ 1825  git commit -am 'bump submodules'
+ 1826  git push
+ 1827  conda activate seamless1
+ 1828  conda activate crocodile
+ 1829  conda deactivate
+ 1830  conda env remove -n crocodile
+ 1831  less ../crocodile-OLD/create-environment.sh 
+ 1832  find  ../crocodile-OLD --name '*.y*ml'
+ 1833  find  ../crocodile-OLD -name '*.y*ml'
+ 1834  ipython3
+ 1835  ls
+ 1836  mkdir code
+ 1837  mv WIP/crocodile_library_config.py code/
+ 1838  code code/crocodile_library_config.py 
+ 1839  cp crocodile-OLD/crocodile/nuc/library.py code
+ 1840  code code/library.py 
+ 1841  rm code/crocodile_library_config.py 
+ 1842  cd code/
+ 1843  ln -s ../fraglib/templates/
+ 1844  ls /home/sjoerd/data/work/nucleotide-repositories/nucleotide-library/make-rotamers/result
+ 1845  ls /home/sjoerd/data/work/nucleotide-repositories/make-rotamers/result
+ 1846  ls /home/sjoerd/data/work/nucleotide-repositories/make-rotaconformers/rotaconformers/dinuc-AA-0.5.npy
+ 1847  seamless-checksum /home/sjoerd/data/work/nucleotide-repositories/make-rotaconformers/rotaconformers/dinuc-AA-0.5.npy
+ 1848  cat ../fraglib/rotamers/dinuc-AA-0.5.npy.CHECKSUM 
+ 1849  cp ../crocodile-OLD/crocodile/nuc/util/mutate.py .
+ 1850  code mutate.py 
+ 1851  cp ../crocodile-OLD/crocodile/nuc/util/ppdb.py .
+ 1852  code ppdb.py 
+ 1853  cp ../crocodile-OLD/crocodile/nuc/__init__.py 
+ 1854  code ../crocodile-OLD/crocodile/nuc/__init__.py 
+ 1855  python3 -c 'import library; library.config()'
+ 1856  conda activate crocodile
+ 1857  python3 -c 'import library; library.config()'
+ 1858  ls
+ 1859  cp ../crocodile-OLD/crocodile/parse_pdb.py .
+ 1860  python3 -c 'import library; library.config()'
+ 1861  code parse_pdb.py 
+ 1862  python3 -c 'import library; library.config()'
+ 1863  ls
+ 1864  grep sys *.py
+ 1865  ls
+ 1866  ipython3
+ 1867  pip install ipython
+ 1868  ipython
+ 1869  cd ..
+ 1870  mkdir tests
+ 1871  cd tests/
+ 1872  code test_library.py
+ 1873  pip install pytest
+ 1874  pytest test_library.py 
+ 1875  cd ..
+ 1876  ipython
+ 1877  cd code/
+ 1878  ipython
+ 1879  pytest test_library.py 
+ 1880  cd ../tests/
+ 1881  pytest test_library.py 
+ 1882  code ../code/library.py.DEPS.yaml
+ 1883  ls templates/AA-ppdb.npy
+ 1884  cd ..
+ 1885  ls templates/AA-ppdb.npy
+ 1886  cd code
+ 1887  ls templates/AA-ppdb.npy
+ 1888  ls
+ 1889  cd ..
+ 1890  ls
+ 1891  code architecture.txt 
+ 1892  less code/ppdb.py 
+ 1893  ls
+ 1894  code crocodile-OLD/util/pseudo-crocodile-2stack.py 
+ 1895  pytest -s tests/test_library.py 
+ 1896  code code/box.py
+ 1897  ipython3
+ 1898  cd tests/
+ 1899  pytest -s test_offsets.py 
+ 1900  ls
+ 1901  ls -l  ../code
+ 1902  ln -s ../fraglib/templates/
+ 1903  rm ../code/templates
+ 1904  pytest .
+ 1905  cp ../crocodile-OLD/crocodile/main/superimpose.py ../code/
+ 1906  code ../code/superimpose.py 
+ 1907  cd ..
+ 1908  mkdir specs
+ 1909  mkdir plans
+ 1910  cd tests/
+ 1911  pytest -s test_poses.py 
+ 1912  ln -s ../code
+ 1913  pytest -s test_poses.py 
+ 1914  pytest -s test_offsets.py 
+ 1915  pytest -s test_poses.py 
+ 1916  pytest -s test_offsets.py 
+ 1917  pytest -s test_poses.py 
+ 1918  ls
+ 1919  cd ..
+ 1920  ls
+ 1921  code plans/poses.md 
+ 1922  ls
+ 1923  cd tests/
+ 1924  ls
+ 1925  mkdir 1b7f
+ 1926  ls  ~/crocodile-test/*.pdb
+ 1927  less  ~/crocodile-test/reference.pdb 
+ 1928  cp  ~/crocodile-test/reference.pdb 1b7f/rna.pdb
+ 1929  cd ~/crocodile-test/
+ 1930  ls
+ 1931  ls *.pdb
+ 1932  ls */*.pdb
+ 1933  cp proteins/*.pdb  ~/data/work/crocodile/tests/1b7f
+ 1934  ls
+ 1935  find . -name '*anchor*'
+ 1936  ls ~/*/grow.py
+ 1937  ls ~/*/*/grow.py
+ 1938  ls ~/*/*/*/grow.py
+ 1939  ls ~/*/*/*/*/grow.py
+ 1940  ls ~/*/*/*/*/*/grow.py
+ 1941  ls ~/data/work/nucleotide-repositories/crocodile-protocol-OLD-protocols/1b7f-crocodile/
+ 1942  exit
+ 1943  conda activate crocodile
+ 1944  htio
+ 1945  htop
+ 1946  conda activate crocodile
+ 1947  code crocodile-OLD/util/pseudo-crocodile-2stack.py 
+ 1948  code crocodile-OLD/util/calc-all-rotamers-stacking-angle.py 
+ 1949  code crocodile-OLD/util/filter-rotamers-stacking-angle.py 
+ 1950  python3 code/stack.py 
+ 1951  python3 code/stack.py -h
+ 1952  python3 code/stack.py 
+ 1953  htop
+ 1954  conda activate crocodile
+ 1955  head -n 1  ~/data/work/nucleotide-repositories/make-rotaconformers/rotaconformers/dinuc-CA-0.5.npy
+ 1956  head -n 1  ~/data/work/nucleotide-repositories/make-rotaconformers/rotaconformers/dinuc-CA-0.5-extension.npy
+ 1957  ipython3
+ 1958  conda activate crocodile
+ 1959  scp /home/sjoerd/.crocodile/fraglib.yaml mbi-frontend:
+ 1960  ssh sisr@sb-node1
+ 1961  code ~/professional-TODO/
+ 1962  code ~/.seamless/clusters/mbi.yaml 
+ 1963  ssh sisr@mbi-storage2
+ 1964  ssh sisr@mbi-storage
+ 1965  ssh sisr@avicenne
+ 1966  ssh sisr@sb-cluster
+ 1967  ssh sisr@sbcluster
+ 1968  ssh sisr@sbcluster-ib
+ 1969  ssh sisr@mbi-frontend
+ 1970  exit
+ 1971  ssh mbi-frontend
+ 1972  exit
+ 1973  ssh sisr@sb-node2
+ 1974  exit
+ 1975  conda activate crocodile
+ 1976  git push loria
+ 1977  git push
+ 1978  cd tests/1b7f/
+ 1979  code stack-frag3-fwd.sh 
+ 1980  ./stack-frag3-fwd.sh 
+ 1981  man zstd 
+ 1982  du -sh frag3-fwd/
+ 1983  du -sh frag3-fwd/*
+ 1984  du -sh frag3-fwd/
+ 1985  zstdmt --rm frag3-fwd/*.npy
+ 1986  df -h
+ 1987  code stack-frag3-bwd.sh 
+ 1988  time ./stack-frag3-bwd.sh 
+ 1989  zstdmt --rm frag3-bwd/*.npy 
+ 1990  python3 code/filter_identical_poses.py frag3-bwd/ frag3-fwd/ frag3-merged
+ 1991  df
+ 1992  time python3 code/filter_identical_poses.py frag3-bwd/ frag3-fwd/ frag3-merged
+ 1993  conda activate crocodile
+ 1994  ls /tmp/ -ld | less
+ 1995  cd /tmp/
+ 1996  ls /tmp/ -ld | less
+ 1997  cd 
+ 1998  conda activate crocodile
+ 1999  ls
+ 2000  cd WIP/
+ 2001  cp -r  ~/data/work/nucleotide-repositories/crocodile-protocol-OLD-protocols/1b7f-crocodile/protocols .
+ 2002  mv protocols/protocols/* protocols/
+ 2003  rmdir  protocols/protocols/
+ 2004  code protocols/score*
+ 2005  cd ../tests/1b7f/
+ 2006  ls
+ 2007  cd pdbs/
+ 2008  ls
+ 2009  cat ../data/anchors.txt 
+ 2010  ls
+ 2011  cp 1b7f_dom2.pdb ../../../WIP/
+ 2012  cd ../../../WIP/
+ 2013  python ~/attract/allatom/aareduce.py 1b7f_dom2.pdb 
+ 2014  python ~/attract/allatom/aareduce.py --heavy 1b7f_dom2.pdb 
+ 2015  ls
+ 2016  python3 ~/attract/tools/reduce.py 1b7f_dom2-aa.pdb 
+ 2017  code 1b7f_dom2-aar.pdb 
+ 2018  ~/attract/bin/make-grid-omp 
+ 2019  ~/attract/bin/make-grid-omp 1b7f_dom2-aar.pdb 
+ 2020  cp ../fraglib/templates/ATTRACT/UG.pdb .
+ 2021  cp ../fraglib/templates/ATTRACT/UG-atomtypes.npy .
+ 2022  less UG.pdb 
+ 2023  awk '{print $9}' UG.pdb 
+ 2024  awk '{print $9}' UG.pdb  | sort -nu > UG.alphabet
+ 2025  cat UG.alphabet 
+ 2026  ~/attract/bin/make-grid-omp 1b7f_dom2-aar.pdb  ~/attract/attract.par 5 7 1b7f_dom2-aar.grid UG.alphabet 
+ 2027  ls
+ 2028  cd protocols/
+ 2029  ls
+ 2030  code read_grid*.py
+ 2031  ..
+ 2032  ls -al
+ 2033  ls -alh
+ 2034  ls -alh ..
+ 2035  cd ..
+ 2036  ln -s ../tests/1b7f/frag3-bwd/poses-1.npy.zst 
+ 2037  ln -s ../tests/1b7f/frag3-bwd/offsets-1.dat 
+ 2038  ls
+ 2039  ls -l ../code/decode_rotamer_matrices.py 
+ 2040  code ../code/decode_rotamer_matrices.py
+ 2041  python ../code/decode_rotamer_matrices.py 
+ 2042  ls
+ 2043  python ../code/decode_rotamer_matrices.py --poses poses-1.npy.zst --offsets offsets-1.dat --sequence UG 
+ 2044  python ../code/decode_rotamer_matrices.py --poses poses-1.npy.zst --offsets offsets-1.dat --sequence UG --output rotamer_matrix.npy
+ 2045  file rotamer_matrix.npy 
+ 2046  python
+ 2047  ipython
+ 2048  ls
+ 2049  code reduce-npy.py 
+ 2050  rm reduce-plan.py 
+ 2051  file rotamer_matrix.npy 
+ 2052  ls
+ 2053  code ../.gitignore 
+ 2054  python ../code/decode_rotamer_matrices.py --poses poses-1.npy.zst --offsets offsets-1.dat --sequence UG --output rotamer_matrix.npy
+ 2055  clear
+ 2056  ls
+ 2057  code protocols/score*
+ 2058  clear
+ 2059  python /home/sjoerd/data/work/crocodile/WIP/protocols/score-attract-jax.py --atrec b7f_dom2-aar-atomtypes.npy --grid 1b7f_dom2-aar.grid  --atlig UG-atomtypes.npy --conformers poses-1-conformers.npy rotamer_matrix.npy 1b7f_dom2-aar-ocordinates.npy fraglib-GU-ex1b7f.npy
+ 2060  conda activate jax
+ 2061  python /home/sjoerd/data/work/crocodile/WIP/protocols/score-attract-jax.py --atrec b7f_dom2-aar-atomtypes.npy --grid 1b7f_dom2-aar.grid  --atlig UG-atomtypes.npy --conformers poses-1-conformers.npy rotamer_matrix.npy 1b7f_dom2-aar-ocordinates.npy fraglib-GU-ex1b7f.npy
+ 2062  ls
+ 2063  python /home/sjoerd/data/work/crocodile/WIP/protocols/score-attract-jax.py --atrec 1b7f_dom2-aar-atomtypes.npy --grid 1b7f_dom2-aar.grid  --atlig UG-atomtypes.npy --conformers poses-1-conformers.npy rotamer_matrix.npy 1b7f_dom2-aar-ocordinates.npy fraglib-GU-ex1b7f.npy
+ 2064  history | grep grid
+ 2065  python /home/sjoerd/data/work/crocodile/WIP/protocols/score-attract-jax.py --atrec 1b7f_dom2-aar-atomtypes.npy --grid 1b7f_dom2-aar.grid  --atlig UG-atomtypes.npy --conformers poses-1-conformers.npy rotamer_matrix.npy 1b7f_dom2-aar-ocordinates.npy fraglib-GU-ex1b7f.npy
+ 2066  less 1b7f_dom2-aar.pdb 
+ 2067  less UG.
+ 2068  less UG.alphabet 
+ 2069  history | grep grid
+ 2070  ~/attract/bin/make-grid-omp 1b7f_dom2-aar.pdb  ~/attract/attract.par 5 7 1b7f_dom2-aar.grid UG.alphabet 
+ 2071  less 1b7f_dom2-aar.pdb 
+ 2072  less UG.alphabet 
+ 2073  ~/attract/bin/make-grid-omp 1b7f_dom2-aar.pdb  ~/attract/attract.par 5 7 1b7f_dom2-aar.grid --alphabet UG.alphabet 
+ 2074  python /home/sjoerd/data/work/crocodile/WIP/protocols/score-attract-jax.py --atrec 1b7f_dom2-aar-atomtypes.npy --grid 1b7f_dom2-aar.grid  --atlig UG-atomtypes.npy --conformers poses-1-conformers.npy rotamer_matrix.npy 1b7f_dom2-aar-ocordinates.npy fraglib-GU-ex1b7f.npy
+ 2075  cp protocols/score.sh OLD-score.sh
+ 2076  rm -rf protocols/
+ 2077  git add OLD-score.sh 
+ 2078  cp -r ~/data/work/nucleotide-repositories/crocodile-protocol-OLD-protocols/1b7f-crocodile/protocols/protocols .
+ 2079  du -sh protocols/
+ 2080  git add protocols/
+ 2081  history | code
+ 2082  history | code -
+ 2083  history > HISTORY
+ 1048  seamless-init 
+ 1049  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1050  which seamless-init
+ 1051  printenv | grep SEAMLESS
+ 1052  seamless-init 
+ 1053  less seamless.yaml 
+ 1054  less .seamless.yaml 
+ 1055  seamless-init 
+ 1056  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1057  seamless-init 
+ 1058  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1059  seamless-init 
+ 1060  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1061  seamless-init 
+ 1062  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1063  seamless-init 
+ 1064  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1065  seamless-init 
+ 1066  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1067  seamless-init 
+ 1068  ./calc-pi-nesting.sh 50 100000006
+ 1069  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1070  seamless-init 
+ 1071  ./calc-pi-nesting.sh 50 1100000
+ 1072  ./calc-pi-nesting.sh 10 1100001
+ 1073  ./calc-pi-nesting.sh 10 2100001
+ 1074  ./calc-pi-nesting.sh 10 5100001
+ 1075  ./calc-pi-nesting.sh 10 10000001
+ 1076  ./calc-pi-nesting.sh 10 30000001
+ 1077  ./calc-pi-nesting.sh 10 100000001
+ 1078  ./calc-pi-nesting.sh 10 100000002
+ 1079  ./calc-pi-nesting.sh 10 50000002
+ 1080  ./calc-pi-nesting.sh 10 100000003
+ 1081  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1082  seamless-init 
+ 1083  ./calc-pi-nesting.sh 10 100000004
+ 1084  ./calc-pi-nesting.sh 10 100000005
+ 1085  ./nesting.sh 
+ 1086  ps -elf | grep daskserver
+ 1087  kill 1624891
+ 1088  ./nesting.sh 
+ 1089  ps -elf | grep daskserver
+ 1090  kill 1628938
+ 1091  printenv | grep SEAMLESS
+ 1092  seamless-init 
+ 1093  ./nesting.sh 
+ 1094  seamless-init 
+ 1095  ./nesting.sh 
+ 1096  seamless-run './nesting.sh'
+ 1097  seamless-run -vvv './nesting.sh'
+ 1098  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1099  seamless-run -vvv './nesting.sh'
+ 1100  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1101  seamless-run -vvv './nesting.sh'
+ 1102  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1103  seamless-run -vvv './nesting.sh'
+ 1104  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1105  seamless-init 
+ 1106  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1107  seamless-init 
+ 1108  seamless-run -vvv './nesting.sh'
+ 1109  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1110  seamless-run -vvv './nesting.sh'
+ 1111  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1112  seamless-run -vvv './nesting.sh'
+ 1113  seamless-init 
+ 1114  seamless-run -vvv './nesting.sh'
+ 1115  seamless-run './nesting.sh'
+ 1116  seamless-run './nested.sh | awk '\''{print "LINE " $0}'\'' '
+ 1117  seamless-run './nesting.sh'
+ 1118  seamless-init 
+ 1119  seamless-run './nesting.sh'
+ 1120  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1121  seamless-init 
+ 1122  seamless-run './nesting.sh'
+ 1123  printenv | grep SEAMLESS
+ 1124  seamless-run './nesting.sh'
+ 1125  less ~/.remote-http-launcher/server/daskserver-local-rw-cmd-test.log 
+ 1126  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1127  seamless-init 
+ 1128  seamless-run './nesting.sh'
+ 1129  less ~/.remote-http-launcher/server/daskserver-local-rw-cmd-test.log 
+ 1130  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1131  seamless-init 
+ 1132  seamless-run './nesting.sh'
+ 1133  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1134  seamless-init 
+ 1135  seamless-run './nesting.sh'
+ 1136  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1137  seamless-init 
+ 1138  seamless-run './nesting.sh'
+ 1139  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1140  seamless-init 
+ 1141  seamless-run './nesting.sh'
+ 1142  code seamless.yaml 
+ 1143  seamless-run './nesting.sh'
+ 1144  seamless-run 'bash -x nesting.sh'
+ 1145  seamless-run 'bash nesting.sh'
+ 1146  seamless-run 'bash nesting.sh nested.sh'
+ 1147  seamless-init 
+ 1148  seamless-run 'bash nesting.sh nested.sh'
+ 1149  seamless-init 
+ 1150  seamless-run 'bash nesting.sh nested.sh '
+ 1151  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1152  seamless-run 'bash nesting.sh nested.sh '
+ 1153  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1154  seamless-run 'bash nesting.sh nested.sh '
+ 1155  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1156  seamless-run 'bash nesting.sh nested.sh '
+ 1157  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1158  seamless-init 
+ 1159  seamless-run 'bash nesting.sh nested.sh '
+ 1160  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1161  seamless-init 
+ 1162  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1163  seamless-init 
+ 1164  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1165  seamless-init 
+ 1166  seamless-run 'bash nesting.sh nested.sh '
+ 1167  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1168  seamless-init 
+ 1169  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1170  seamless-init 
+ 1171  seamless-run 'bash nesting.sh nested.sh '
+ 1172  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1173  seamless-init 
+ 1174  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1175  seamless-init 
+ 1176  seamless-run 'bash nesting.sh nested.sh '
+ 1177  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1178  seamless-init 
+ 1179  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1180  seamless-init 
+ 1181  seamless-run 'bash nesting.sh nested.sh '
+ 1182  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1183  seamless-init 
+ 1184  seamless-run 'bash nesting.sh nested.sh '
+ 1185  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1186  seamless-init 
+ 1187  seamless-run 'bash nesting.sh nested.sh '
+ 1188  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1189  seamless-init 
+ 1190  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1191  seamless-init 
+ 1192  seamless-run 'bash nesting.sh nested.sh '
+ 1193  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1194  seamless-init 
+ 1195  seamless-run 'bash nesting.sh nested.sh '
+ 1196  python3 -c 'import seamless'
+ 1197  python3 -c 'import seamless.checksum'
+ 1198  python3 -c 'import seamless.checksum.calculate_checksum'
+ 1199  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1200  seamless-init 
+ 1201  seamless-run 'bash nesting.sh nested.sh '
+ 1202  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1203  seamless-init 
+ 1204  seamless-run 'bash nesting.sh nested.sh  '
+ 1205  rm calc_pi.job-* -f
+ 1206  ls
+ 1207  rm calc_pi-nested.job-* -f
+ 1208  rm nesting.sh nested.sh -f
+ 1209  ./calc-pi-nesting.sh 
+ 1210  ./calc-pi-nesting.sh 10 10000
+ 1211  ./calc-pi-nesting.sh 10 1000000
+ 1212  ./calc-pi-nesting.sh 10 10000000
+ 1213  ./calc-pi-nesting.sh 100 100000000
+ 1214  ./calc-pi-nesting.sh 102 100000000
+ 1215  ./calc-pi-nesting.sh 30 100000001
+ 1216  conda activate seamless1
+ 1217  htop
+ 1218  cd seamless-config/
+ 1219  pip install -e .
+ 1220  htop
+ 1221  git push
+ 1222  conda activate base
+ 1223  git push
+ 1224  exit
+ 1225  gh create
+ 1226  gh repo create
+ 1227  cd ..
+ 1228  rm -rf crocodile-lab/
+ 1229  gh repo create
+ 1230  cd crocodile-lab/
+ 1231  ls
+ 1232  code LICENSE 
+ 1233  code README
+ 1234  cp ~/nefertiti/nefertiti/functions/superimpose.py .
+ 1235  code superimpose.py 
+ 1236  conda activate base
+ 1237  cp ~/nefertiti/nefertiti/functions/write_pdb.py .
+ 1238  cp ~/nefertiti/nefertiti/functions/parse_pdb.py .
+ 1239  code write_pdb.py 
+ 1240  cp ~/nefertiti/nefertiti/functions/parse_pdb.py .
+ 1241  cp ~/data/work/nucleotide-repositories/nucleotide-fragment-templates/A.pdb .
+ 1242  cp ~/data/work/nucleotide-repositories/nucleotide-library/library/dinuc-CA-0.5.npy .
+ 1243  cp ~/data/work/nucleotide-repositories/nucleotide-library/library/dinuc-AC-0.5.npy .
+ 1244  code .gitignore 
+ 1245  which seamless-checksum 
+ 1246  cp ~/seamless1/seamless-base/bin/seamless-checksum $(which seamless-checksum)
+ 1247  seamless-checksum dinuc-AC-0.5.npy 
+ 1248  seamless-checksum --hepl
+ 1249  seamless-checksum --help
+ 1250  seamless-checksum dinuc-AC-0.5.npy > dinuc-AC-0.5.npy.CHECKSUM
+ 1251  seamless-checksum dinuc-CA-0.5.npy > dinuc-CA-0.5.npy.CHECKSUM
+ 1252  head dinuc-*CHECKSUM
+ 1253  code select-library.py
+ 1254  wc -l A.pdb 
+ 1255  python3 select-library.py 
+ 1256  ls
+ 1257  head -n 1 libP.npy 
+ 1258  head -n 1 libPP.npy 
+ 1259  code fit-bruteforce.py
+ 1260  python3 kabsch-all.py 
+ 1261  ;s
+ 1262  ls
+ 1263  python3 select-library.py 
+ 1264  ls *.py
+ 1265  python3 kabsch-all.py 
+ 1266  code PIPELINE.txt
+ 1267  python3 fit-bruteforce.py 
+ 1268  head -n 1 fit-bruteforce.npy 
+ 1269  ipython3
+ 1270  code test1.py
+ 1271  ls
+ 1272  python3 test1.py 
+ 1273  code test1.png 
+ 1274  python3 test1.py 
+ 1275  code test1.png 
+ 1276  python3 test1.py 
+ 1277  code test1.png 
+ 1278  python3 test1.py 
+ 1279  code test1.png 
+ 1280  python3 test1.py 
+ 1281  cp test1.py test2.py
+ 1282  python3 test1.py 
+ 1283  mv test2.py testX.py
+ 1284  code test2.py
+ 1285  python3 test1.py 
+ 1286  python3 test2.py 
+ 1287  code test2.p
+ 1288  code test2.png 
+ 1289  python3 test2.py 
+ 1290  code test2.png 
+ 1291  python3 test2.py 
+ 1292  rm PQd0.npy 
+ 1293  python3 kabsch-all.py 
+ 1294  code testX.py 
+ 1295  code test3.py 
+ 1296  mv testX.py test3.py
+ 1297  code test3.py 
+ 1298  conda activate base
+ 1299  conda activate seamless1
+ 1300  cd seamless-transformer/tests/cmd/
+ 1301  cat ./calc-pi-nesting.sh 
+ 1302  ./calc-pi-nesting.sh 100 1000000
+ 1303  seamless-init 
+ 1304  ./calc-pi-nesting.sh 100 1000000
+ 1305  rm ~/.remote-http-launcher/client/* -f
+ 1306  seamless-init 
+ 1307  ./calc-pi-nesting.sh 100 1000000
+ 1308  rm ~/.remote-http-launcher/client/* -f
+ 1309  seamless-init 
+ 1310  ./calc-pi-nesting.sh 100 1000000
+ 1311  ./calc-pi-nesting.sh 100 10000000
+ 1312  ./calc-pi-nesting.sh 100 100000000
+ 1313  ./calc-pi-nesting.sh 200 1000000000
+ 1314  ./calc-pi-nesting.sh 1000 300000000
+ 1315  ./calc-pi-nesting.sh 100 300000001
+ 1316  ./calc-pi-nesting.sh 1000 300000001
+ 1317  ./calc-pi-nesting.sh 2000 100000000
+ 1318  ./calc-pi-nesting.sh 2000 100000008
+ 1319  ./calc-pi-nesting.sh 2000 1000000008
+ 1320  conda activate hashserver
+ 1321  ls *auth*
+ 1322  less allpdb-chain-auth.json.CHECKSUM 
+ 1323  ls */allpdb-chain-auth.json
+ 1324  less intermediate/allpdb-chain-auth.json 
+ 1325  ipython3
+ 1326  ls
+ 1327  conda activate seamless-exact
+ 1328  code summarize_header.py 
+ 1329  less allpdb-summarize-header.py 
+ 1330  less summarize_header_keys.txt 
+ 1331  ls
+ 1332  less allpdb-segments.txt 
+ 1333  less allpdb-keyorder.json
+ 1334  wc -l allpdb-keyorder.json
+ 1335  wc -l allpdb-segments.txt 
+ 1336  grep allpdb-segments *.py
+ 1337  less allpdb-detect-segments.py 
+ 1338  less allpdb-struc-index.json
+ 1339  wc -l allpdb-struc-index.json
+ 1340  wc -l allpdb-segments.txt 
+ 1341  less allpdb-segments.txt 
+ 1342  ls
+ 1343  less allpdb-detect-interfaces.py 
+ 1344  grep allpdb-interfaces *.py
+ 1345  less filter-interfaces.py 
+ 1346  du -sh allpdb-filtered-interfaces.mixed
+ 1347  head -n 2 allpdb-filtered-interfaces.mixed
+ 1348  conda activate seamless-exact
+ 1349  python3 filter-interfaces.py 
+ 1350  python3 summarize_header.py 
+ 1351  cd /tmp/
+ 1352  conda activate seamless-exact
+ 1353  pymol --help
+ 1354  pymol -d 'set cif_use_auth, off'
+ 1355  pymol --help
+ 1356  pymol --help | less
+ 1357  pymol -d 'set cif_use_auth, off'
+ 1358  pymol --help | less
+ 1359  pymol -d 'set cif_use_auth, off'
+ 1360  pymol -d set cif_use_auth, off
+ 1361  pymol -d 'set("cif_use_auth", "off")'
+ 1362  pymol -d 'set "cif_use_auth", "off"'
+ 1363  pymol -d 'set "cif_use_auth" "off"'
+ 1364  pymol -d 'set cif_use_auth off'
+ 1365  pymol -d 'cif_use_auth=off'
+ 1366  pymol -d 'cif_use_auth=0'
+ 1367  pymol -d 'cmd.set("cif_use_auth","off")'
+ 1368  pymol -d 'cmd.set("cif_use_auth","off")' ~/1b7f.cif 
+ 1369  pymol ~/1b7f.cif 
+ 1370  conda activate hashserver
+ 1371  conda activate hashserver
+ 1372  code test4.py
+ 1373  python3 kabsch-all.py 
+ 1374  python3 select-library.py 
+ 1375  python3 kabsch-all.py 
+ 1376  ls
+ 1377  python3 fit-bruteforce.py 
+ 1378  python3 test3.py 
+ 1379  code test3.png 
+ 1380  python3 test3.py 
+ 1381  code test3.png 
+ 1382  python3 test3.py 
+ 1383  code test3.png 
+ 1384  ls
+ 1385  python3 test3.py 
+ 1386  python3 test4.py 
+ 1387  ls
+ 1388  code select-library.py 
+ 1389  python3 select-library.py 
+ 1390  python3 kabsch-all.py 
+ 1391  python3 fit-bruteforce.py 
+ 1392  df -h
+ 1393  python3 fit-bruteforce.py 
+ 1394  python3 test3.py 
+ 1395  python3 test4.py 
+ 1396  seamless-checksum fit-bruteforce.npy > fit-bruteforce.npy.CHECKSUM
+ 1397  ls
+ 1398  ls -l fit-bruteforce.npy.gz 
+ 1399  du -sh fit-bruteforce.npy.gz 
+ 1400  du -sh fit-cache.npz 
+ 1401  rm fit-cache.npz 
+ 1402  ls -lt
+ 1403  ls -lt *npz
+ 1404  ls -lt | head
+ 1405  du -sh fit-cache.npz 
+ 1406  du -s fit-cache.npz 
+ 1407  htop
+ 1408  conda activate hashserver
+ 1409  less 1B7F-stack/frag3-stack/README 
+ 1410  cd 1B7F-stack/
+ 1411  head -n 1 *.npy
+ 1412  ls
+ 1413  cd frag3-stack/
+ 1414  ls
+ 1415  less README 
+ 1416  less RESULT 
+ 1417  head -n 1 rotaconformer-mask.npy 
+ 1418  ipython3
+ 1419  python3
+ 1420  conda deactivate
+ 1421  python3
+ 1422  ipython3
+ 1423  conda activate hashserver
+ 1424  pconda activate /home/sjoerd/miniconda3/envs/seamless-exact
+ 1425  ls *.png
+ 1426  code plot-angle-corrected-vector.png 
+ 1427  ls *.png
+ 1428  code plot-angle-z-vector.png 
+ 1429  code plot-dihedrals.png 
+ 1430  ls
+ 1431  ls ~/data/work/crocodile/*/*ring*
+ 1432  ls ~/data/work/crocodile/*/*.py
+ 1433  less  ~/data/work/crocodile/util/filter-rotamers-stacking-angle.py 
+ 1434  less  ~/data/work/crocodile/util/calc-stacking-angle.py 
+ 1435  less  ~/data/work/crocodile/util/pseudo-crocodile-2stack.py 
+ 1436  conda activate /home/sjoerd/miniconda3/envs/seamless-exact
+ 1437  conda activate seamless-exact
+ 1438  yhconda activate seamless-exact
+ 1439  python3 pair-freq-words.py 
+ 1440  python3 pair-freq-words.py > pair-freq-words.txt
+ 1441  code pair-freq-words.txt 
+ 1442  python3 pair-freq-words.py | tee pair-freq-words.txt
+ 1443  code pair-freq-words.txt 
+ 1444  python3 pair-freq-words.py | tee pair-freq-words.txt
+ 1445  rm word_matrix_*
+ 1446  python3 pair-freq-words.py | tee pair-freq-words.txt
+ 1447  code generate-words.py
+ 1448  python3 pair-freq-words.py | tee pair-freq-words.txt
+ 1449  python3 pair-freq-words.py |& less
+ 1450  ipython3
+ 1451  python3 pair-freq-words.py |& less
+ 1452  python3 pair-freq-words.py > pair-freq-words.txt 
+ 1453  ls 
+ 1454  git status
+ 1455  python3 generate-words.py 
+ 1456  python3 generate-words.py
+ 1457  python3 generate-words.py > x
+ 1458  code x
+ 1459  awk 'length($1) == 2' x | wc -l
+ 1460  wc -l x
+ 1461  python3 generate-words.py 
+ 1462  [A
+ 1463  python3 generate-words.py 
+ 1464  python3 generate-words.py -
+ 1465  python3 generate-words.py > x 2>&1
+ 1466  code x
+ 1467  python3 generate-words.py 
+ 1468  python3 generate-words.py > x 2>&1
+ 1469  python3 generate-words.py
+ 1470  python3 generate-words.py > x 2>&1
+ 1471  code x
+ 1472  python3 generate-words.py > x 2>&1
+ 1473  code x
+ 1474  python3 generate-words.py > x 2>&1
+ 1475  code x
+ 1476  python3 generate-words.py 
+ 1477  python3 generate-words.py  > x
+ 1478  sort -k1 x | less
+ 1479  wc -l x
+ 1480  awk 'length($2)==2' x | wc -l
+ 1481  awk 'length($1)==2' x | wc -l
+ 1482  python3 generate-words.py  
+ 1483  cd ../nucleotide-stacking-interaction
+ 1484  code .
+ 1485  cd ../nucleotide-library-fit/
+ 1486  python3 generate-words.py  
+ 1487  cd ../nucleotide-library-fit/
+ 1488  python3 generate-words.py  [A
+ 1489  [A
+ 1490  python3 generate-words.py  
+ 1491  python3 pair-freq-words.py 
+ 1492  python3 generate-words.py  
+ 1493  python3 generate-words.py  >& x
+ 1494  [A
+ 1495  python3 generate-words.py  >& x
+ 1496  python3 generate-words.py 
+ 1497  python3 generate-words.py  >& x
+ 1498  python3 generate-words.py 
+ 1499  python3 generate-words.py  >& x
+ 1500  conda activate seamless-exact
+ 1501  python3 generate-words.py  
+ 1502  pip install scipy
+ 1503  python3 -c 'from scipy.special import logcumsumexp'
+ 1504  conda list scipy
+ 1505  python3 generate-words.py  
+ 1506  htop
+ 1507  conda activate seamless-exact
+ 1508  htop
+ 1509  conda activate seamless-exact
+ 1510  conda activate crocodile
+ 1511  code ~/crocodile-test/crocodile_library_config.py 
+ 1512  git status
+ 1513  git diff
+ 1514  git status
+ 1515  code .gitignore 
+ 1516  git status
+ 1517  git commit -am 'snapshot OLD CODE'
+ 1518  git push
+ 1519  git log
+ 1520  cd ..
+ 1521  cp -r crocodile crocodile-OLD
+ 1522  du -sh crocodile-OLD/
+ 1523  du -sh crocodile-OLD/*
+ 1524  cd crocodile
+ 1525  git log
+ 1526  git push loria
+ 1527  git log
+ 1528  git 
+ 1529  git reset 622353 --hard
+ 1530  ls
+ 1531  EMPTY_ROOT=$(git commit-tree $(git hash-object -t tree /dev/null) -m "root: empty state")
+ 1532  git rebase --onto "$EMPTY_ROOT" --root main
+ 1533  git push --force-with-lease origin main
+ 1534  git push --force-with-lease loria main
+ 1535  git log
+ 1536  git branch old
+ 1537  git push origin old
+ 1538  git log
+ 1539  git push loria old
+ 1540  git log
+ 1541  git statis
+ 1542  git status
+ 1543  git log
+ 1544  git reset 458239f301 --hard
+ 1545  ls
+ 1546  rm -rf WIP/ crocodile/ test/ util/
+ 1547  git reset 458239f301 --hard
+ 1548  git push
+ 1549  git push --force
+ 1550  git push loria --force
+ 1551  conda activate crocodile
+ 1552  conda activate base
+ 1553  cp test6.py test-make-rotaconformers.py
+ 1554  code test-make-rotaconformers.py 
+ 1555  python3 test-make-rotaconformers.py 
+ 1556  code .gitignore 
+ 1557  conda activate base
+ 1558  conda activate seamless1
+ 1559  cd seamless-transformer/
+ 1560  cd tests/
+ 1561  cd dask/
+ 1562  cp test_transformation.py test_scratch.py
+ 1563  code test_scratch.py 
+ 1564  conda activate seamless1
+ 1565  conda activate base
+ 1566  cd ../seamless1/seamless-transformer/tests/
+ 1567  code test_py_module.py
+ 1568  code testmodule.py
+ 1569  conda activate seamless1
+ 1570  pytest -s test_py_module.py 
+ 1571  ls
+ 1572  less test_spawn.py 
+ 1573  pytest -s test_transformer.py 
+ 1574  pytest -s test_py_module.py 
+ 1575  pytest -s test_py_module.py::test_func4 
+ 1576  ls
+ 1577  code seamless.yaml .seamless.yaml 
+ 1578  pytest -s test_py_module.py
+ 1579  for i in *.py; do echo $i; pytest -s $i; done
+ 1580  for i in test_*.py; do echo $i; pytest -s $i; done
+ 1581  ls
+ 1582  cp test_py_module.py dask/
+ 1583  cd dask/
+ 1584  code test_py_module.py test_transformer.py 
+ 1585  grep config *.py
+ 1586  grep config ../*.py
+ 1587  less .seamless.yaml 
+ 1588  less seamless.yaml 
+ 1589  pytest -s test_py_module.py 
+ 1590  python3 -c 'import testmodule'
+ 1591  pytest -s test_py_module.py 
+ 1592  mv ../testmodule.py ../testingmodule.py
+ 1593  ln -s ../testingmodule.py 
+ 1594  pytest -s test_py_module.py 
+ 1595  cd ..
+ 1596  pytest -s test_py_module.py 
+ 1597  code test_py_module.py 
+ 1598  pytest -s test_py_module.py 
+ 1599  cd dask/
+ 1600  pytest -s test_py_module.py 
+ 1601  ipython3
+ 1602  seamless-init 
+ 1603  pytest -s test_scratch.py 
+ 1604  seamless-init 
+ 1605  pytest -s test_scratch.py 
+ 1606  conda activate base
+ 1607  aconda activate crocodile
+ 1608  conda activate seamless1
+ 1609  which seamless-checksum 
+ 1610  cat $(which seamless-checksum)
+ 1611  seamless-init exit
+ 1612  exit
+ 1613  conda activate crocodile
+ 1614  conda activate crocodile
+ 1615  code code/p*
+ 1616  cd code/
+ 1617  mv ppdb.py rna_pdb.py
+ 1618  ls
+ 1619  code library.py.DEPS.yaml 
+ 1620  grep import *.py | grep ppdb
+ 1621  code library.py
+ 1622  code library.py.DEPS.yaml 
+ 1623  code *.py
+ 1624  ls
+ 1625  python -c 'import library; library.config()'
+ 1626  pytest ../tests/test_library.py 
+ 1627  ls
+ 1628  cd ../tests/
+ 1629  pytest -s test_offsets.py 
+ 1630  pytest -s -v test_offsets.py 
+ 1631  pytest -s -vv test_offsets.py 
+ 1632  find .. -name '*.py'
+ 1633  find ../crocodile-OLD  -name '*.py'
+ 1634  ls -l ../crocodile-OLD
+ 1635  cd ..
+ 1636  ls -l ../crocodile-OLD
+ 1637  find ../crocodile-OLD  -name '*.py'
+ 1638  grep searchsorted `find ../crocodile-OLD  -name '*.py'`
+ 1639  ipython3
+ 1640  conda activate seamless1
+ 1641  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1642  rm ~/seamless-buffers/myproject/* -rf
+ 1643  cd seamless-transformer/tests/
+ 1644  seamless-init 
+ 1645  git status
+ 1646  pytest -s test_fingertip.py 
+ 1647  cd dask/
+ 1648  seamless-init 
+ 1649  pytest -s test_scratch.py 
+ 1650  code test_scratch.py 
+ 1651  cd ..
+ 1652  seamless-init 
+ 1653  pytest -s test_fingertip.py 
+ 1654  less .seamless.yaml 
+ 1655  less dask/.seamless.yaml 
+ 1656  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1657  ls -lt test* | less
+ 1658  grep stage test_fingertip.py 
+ 1659  seamless-init 
+ 1660  code seamless.yaml 
+ 1661  seamless-init --stage fingertip
+ 1662  pytest test_fingertip.py 
+ 1663  code dask/seamless.yaml 
+ 1664  cd dask/
+ 1665  pytest test_scratch.py 
+ 1666  seamless-init --stage persistent
+ 1667  ls *persist*
+ 1668  ls -lt test*
+ 1669  pytest -s test_scratch.py 
+ 1670  grep persistent test_*
+ 1671  grep set_stage test*.py
+ 1672  seamless-run-tcd ,,
+ 1673  cd ..
+ 1674  seamless-init --simple-remote
+ 1675  seamless-init --stagesimple-remote
+ 1676  seamless-init --stage simple-remote
+ 1677  cd persistent/
+ 1678  ls
+ 1679  cd ..
+ 1680  pytest -s persistent/test_scratch_persistent.py 
+ 1681  python persistent/scratch_persistent_write.py 
+ 1682  python persistent/scratch_persistent_verify.py 
+ 1683  pytest -s persistent/test_scratch_persistent.py 
+ 1684  python3 persistent/scratch_persistent_write.py 
+ 1685  ls /tmp/*scratch*.jsob
+ 1686  ls /tmp/*scratch*.json
+ 1687  ls /tmp/*/*scratch*.json
+ 1688  ls /tmp/*/scratch*.json
+ 1689  ls /tmp/*/*/scratch*.json
+ 1690  ls /tmp/*scratch*.json
+ 1691  ls /tmp/*/*/scratch*.json
+ 1692  less dask/test_scratch.py 
+ 1693  code dask/test_scratch.py 
+ 1694  cd dask/
+ 1695  pytest test_scratch.py 
+ 1696  pytest -s  test_scratch.py 
+ 1697  grep run-tra *.py
+ 1698  grep run-tra *../*/.py
+ 1699  grep run-tra ../*/.py
+ 1700  grep run-tra ../*/*.py
+ 1701  cd ..
+ 1702  code seamless.yaml 
+ 1703  code .seamless.yaml 
+ 1704  rm ~/seamless-buffers/* -rf
+ 1705  seamless-init --stage persistent
+ 1706  grep scratch *.py
+ 1707  code test_fingertip.py 
+ 1708  pytest -s test_fingertip.py 
+ 1709  grep scratch *.py
+ 1710  grep fingertip *.py
+ 1711  pytest -s test_fingertip.py 
+ 1712  seamless-init --stage persistent
+ 1713  seamless-init --stage persistent-test
+ 1714  pytest -s test_fingertip.py 
+ 1715  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1716  seamless-init --stage persistent-test
+ 1717  grep persistent *.py
+ 1718  code test_transformation_checksum.py 
+ 1719  pytest -s test_transformation_checksum.py 
+ 1720  seamless-init --stage fingertip
+ 1721  pytest -s test_fingertip.py 
+ 1722  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1723  rm ~/seamless-buffers/myproject -rf
+ 1724  seamless-init --stage fingertip
+ 1725  pytest -s test_fingertip.py 
+ 1726  code ~/seamless-buffers/myproject/STAGE-fingertip/a6/a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf 
+ 1727  cat  ~/seamless-buffers/myproject/STAGE-fingertip/53/53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3 
+ 1728  cat  ~/seamless-buffers/myproject/STAGE-fingertip/11/1121cfccd5913f0a63fec40a6ffd44ea64f9dc135c66634ba001d10bcf4302a2 
+ 1729  cat  ~/seamless-buffers/myproject/STAGE-fingertip/19/19441b5a4ee61589fcc9e8e411b956799d6a818574f5de70f362deed9c423cd2 
+ 1730  seamless-run-transformation --scratch --fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1731  seamless-run-transformation --stage fingertip --scratch --fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1732  pytest -s test_fingertip.py 
+ 1733  cat ~/.remote-http-launcher/server/database-local-rw-myproject--STAGE-fingertip.log 
+ 1734  cat ~/.remote-http-launcher/server/hashserver-local-rw-myproject--STAGE-fingertip.log 
+ 1735  sqlitebrowser ~/seamless-buffers/myproject/STAGE-fingertip/seamless.db 
+ 1736  bg
+ 1737  seamless-run-transformation --stage fingertip --scratch --fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1738  seamless-init --stage fingertip
+ 1739  seamless-run-transformation --stage fingertip --scratch --fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1740  seamless-resolve a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1741  seamless-resolve --stage fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1742  seamless-run-transformation --stage fingertip --scratch --fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1743  seamless-resolve --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4
+ 1744  seamless-resolve --fingertip --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4
+ 1745  seamless-download --fingertip
+ 1746  seamless-resolve --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4
+ 1747  seamless-fingertip --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4
+ 1748  seamless-fingertip --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4 -o z
+ 1749  seamless-fingertip --stage fingertip -o z  fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4 
+ 1750  seamless-fingertip --stage fingertip --output z  fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4 
+ 1751  cat z
+ 1752  seamless-upload z
+ 1753  seamless-upload --stage fingertip z
+ 1754  ls
+ 1755  cat z.CHECKSUM 
+ 1756  seamless-resolve --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4
+ 1757  conda activate seamless1
+ 1758  cd seamless-base/
+ 1759  pip install -e .
+ 1760  openssl 
+ 1761  openssl sha-256
+ 1762  ls
+ 1763  openssl sha-256 setup.cfg 
+ 1764  seamless-checksum setup.cfg 
+ 1765  cd ../seamless-remote/
+ 1766  pip install -e .
+ 1767  cd ../seamless-dask/
+ 1768  git status
+ 1769  cd seamless-base/
+ 1770  cd ..
+ 1771  cd seamless-transformer/
+ 1772  git status
+ 1773  git diff
+ 1774  diff seamless_transformer/worker.py  ../../seamless-transformer/seamless_transformer/worker.py 
+ 1775  cd ,,
+ 1776  cd ..
+ 1777  git status
+ 1778  cd seamless-base/
+ 1779  git status
+ 1780  cd ../
+ 1781  cd ../seamless-jobserver/
+ 1782  git log
+ 1783  git status
+ 1784  cd seamless-transformer/
+ 1785  git status
+ 1786  git diff
+ 1787  ls
+ 1788  cd ..
+ 1789  ls
+ 1790  git submodule foreach git reset --hard
+ 1791  git submodule foreach git pull origin main
+ 1792  rm seamless-base/bin/*
+ 1793  git submodule foreach git pull origin main
+ 1794  cd ../seamless-dask/
+ 1795  git submodule foreach git pull origin main
+ 1796  cd seamless-base/
+ 1797  git reset --hard
+ 1798  cd ..
+ 1799  git submodule foreach git pull origin main
+ 1800  rm seamless-base/bin/seamless-checksum-*
+ 1801  git submodule foreach git pull origin main
+ 1802  git status
+ 1803  cd seamless-transformer/
+ 1804  git pull origin main
+ 1805  git reset --hard
+ 1806  git pull origin main
+ 1807  cd ..
+ 1808  git status
+ 1809  git commit -am 'bump submodules'
+ 1810  git push
+ 1811  cd ../seamless-jobserver/
+ 1812  git status
+ 1813  git commit -am 'bump submodules'
+ 1814  git push
+ 1815  conda activate seamless1
+ 1816  conda activate crocodile
+ 1817  conda deactivate
+ 1818  conda env remove -n crocodile
+ 1819  less ../crocodile-OLD/create-environment.sh 
+ 1820  find  ../crocodile-OLD --name '*.y*ml'
+ 1821  find  ../crocodile-OLD -name '*.y*ml'
+ 1822  ipython3
+ 1823  ls
+ 1824  mkdir code
+ 1825  mv WIP/crocodile_library_config.py code/
+ 1826  code code/crocodile_library_config.py 
+ 1827  cp crocodile-OLD/crocodile/nuc/library.py code
+ 1828  code code/library.py 
+ 1829  rm code/crocodile_library_config.py 
+ 1830  cd code/
+ 1831  ln -s ../fraglib/templates/
+ 1832  ls /home/sjoerd/data/work/nucleotide-repositories/nucleotide-library/make-rotamers/result
+ 1833  ls /home/sjoerd/data/work/nucleotide-repositories/make-rotamers/result
+ 1834  ls /home/sjoerd/data/work/nucleotide-repositories/make-rotaconformers/rotaconformers/dinuc-AA-0.5.npy
+ 1835  seamless-checksum /home/sjoerd/data/work/nucleotide-repositories/make-rotaconformers/rotaconformers/dinuc-AA-0.5.npy
+ 1836  cat ../fraglib/rotamers/dinuc-AA-0.5.npy.CHECKSUM 
+ 1837  cp ../crocodile-OLD/crocodile/nuc/util/mutate.py .
+ 1838  code mutate.py 
+ 1839  cp ../crocodile-OLD/crocodile/nuc/util/ppdb.py .
+ 1840  code ppdb.py 
+ 1841  cp ../crocodile-OLD/crocodile/nuc/__init__.py 
+ 1842  code ../crocodile-OLD/crocodile/nuc/__init__.py 
+ 1843  python3 -c 'import library; library.config()'
+ 1844  conda activate crocodile
+ 1845  python3 -c 'import library; library.config()'
+ 1846  ls
+ 1847  cp ../crocodile-OLD/crocodile/parse_pdb.py .
+ 1848  python3 -c 'import library; library.config()'
+ 1849  code parse_pdb.py 
+ 1850  python3 -c 'import library; library.config()'
+ 1851  ls
+ 1852  grep sys *.py
+ 1853  ls
+ 1854  ipython3
+ 1855  pip install ipython
+ 1856  ipython
+ 1857  cd ..
+ 1858  mkdir tests
+ 1859  cd tests/
+ 1860  code test_library.py
+ 1861  pip install pytest
+ 1862  pytest test_library.py 
+ 1863  cd ..
+ 1864  ipython
+ 1865  cd code/
+ 1866  ipython
+ 1867  pytest test_library.py 
+ 1868  cd ../tests/
+ 1869  pytest test_library.py 
+ 1870  code ../code/library.py.DEPS.yaml
+ 1871  ls templates/AA-ppdb.npy
+ 1872  cd ..
+ 1873  ls templates/AA-ppdb.npy
+ 1874  cd code
+ 1875  ls templates/AA-ppdb.npy
+ 1876  ls
+ 1877  cd ..
+ 1878  ls
+ 1879  code architecture.txt 
+ 1880  less code/ppdb.py 
+ 1881  ls
+ 1882  code crocodile-OLD/util/pseudo-crocodile-2stack.py 
+ 1883  pytest -s tests/test_library.py 
+ 1884  code code/box.py
+ 1885  ipython3
+ 1886  cd tests/
+ 1887  pytest -s test_offsets.py 
+ 1888  ls
+ 1889  ls -l  ../code
+ 1890  ln -s ../fraglib/templates/
+ 1891  rm ../code/templates
+ 1892  pytest .
+ 1893  cp ../crocodile-OLD/crocodile/main/superimpose.py ../code/
+ 1894  code ../code/superimpose.py 
+ 1895  cd ..
+ 1896  mkdir specs
+ 1897  mkdir plans
+ 1898  cd tests/
+ 1899  pytest -s test_poses.py 
+ 1900  ln -s ../code
+ 1901  pytest -s test_poses.py 
+ 1902  pytest -s test_offsets.py 
+ 1903  pytest -s test_poses.py 
+ 1904  pytest -s test_offsets.py 
+ 1905  pytest -s test_poses.py 
+ 1906  ls
+ 1907  cd ..
+ 1908  ls
+ 1909  code plans/poses.md 
+ 1910  ls
+ 1911  cd tests/
+ 1912  ls
+ 1913  mkdir 1b7f
+ 1914  ls  ~/crocodile-test/*.pdb
+ 1915  less  ~/crocodile-test/reference.pdb 
+ 1916  cp  ~/crocodile-test/reference.pdb 1b7f/rna.pdb
+ 1917  cd ~/crocodile-test/
+ 1918  ls
+ 1919  ls *.pdb
+ 1920  ls */*.pdb
+ 1921  cp proteins/*.pdb  ~/data/work/crocodile/tests/1b7f
+ 1922  ls
+ 1923  find . -name '*anchor*'
+ 1924  ls ~/*/grow.py
+ 1925  ls ~/*/*/grow.py
+ 1926  ls ~/*/*/*/grow.py
+ 1927  ls ~/*/*/*/*/grow.py
+ 1928  ls ~/*/*/*/*/*/grow.py
+ 1929  ls ~/data/work/nucleotide-repositories/crocodile-protocol-OLD-protocols/1b7f-crocodile/
+ 1930  exit
+ 1931  conda activate crocodile
+ 1932  htio
+ 1933  htop
+ 1934  conda activate crocodile
+ 1935  code crocodile-OLD/util/pseudo-crocodile-2stack.py 
+ 1936  code crocodile-OLD/util/calc-all-rotamers-stacking-angle.py 
+ 1937  code crocodile-OLD/util/filter-rotamers-stacking-angle.py 
+ 1938  python3 code/stack.py 
+ 1939  python3 code/stack.py -h
+ 1940  python3 code/stack.py 
+ 1941  htop
+ 1942  conda activate crocodile
+ 1943  head -n 1  ~/data/work/nucleotide-repositories/make-rotaconformers/rotaconformers/dinuc-CA-0.5.npy
+ 1944  head -n 1  ~/data/work/nucleotide-repositories/make-rotaconformers/rotaconformers/dinuc-CA-0.5-extension.npy
+ 1945  ipython3
+ 1946  conda activate crocodile
+ 1947  scp /home/sjoerd/.crocodile/fraglib.yaml mbi-frontend:
+ 1948  ssh sisr@sb-node1
+ 1949  code ~/professional-TODO/
+ 1950  code ~/.seamless/clusters/mbi.yaml 
+ 1951  ssh sisr@mbi-storage2
+ 1952  ssh sisr@mbi-storage
+ 1953  ssh sisr@avicenne
+ 1954  ssh sisr@sb-cluster
+ 1955  ssh sisr@sbcluster
+ 1956  ssh sisr@sbcluster-ib
+ 1957  ssh sisr@mbi-frontend
+ 1958  exit
+ 1959  ssh mbi-frontend
+ 1960  exit
+ 1961  ssh sisr@sb-node2
+ 1962  exit
+ 1963  conda activate crocodile
+ 1964  git push loria
+ 1965  git push
+ 1966  cd tests/1b7f/
+ 1967  code stack-frag3-fwd.sh 
+ 1968  ./stack-frag3-fwd.sh 
+ 1969  man zstd 
+ 1970  du -sh frag3-fwd/
+ 1971  du -sh frag3-fwd/*
+ 1972  du -sh frag3-fwd/
+ 1973  zstdmt --rm frag3-fwd/*.npy
+ 1974  df -h
+ 1975  code stack-frag3-bwd.sh 
+ 1976  time ./stack-frag3-bwd.sh 
+ 1977  zstdmt --rm frag3-bwd/*.npy 
+ 1978  python3 code/filter_identical_poses.py frag3-bwd/ frag3-fwd/ frag3-merged
+ 1979  df
+ 1980  time python3 code/filter_identical_poses.py frag3-bwd/ frag3-fwd/ frag3-merged
+ 1981  conda activate crocodile
+ 1982  ls /tmp/ -ld | less
+ 1983  cd /tmp/
+ 1984  ls /tmp/ -ld | less
+ 1985  cd 
+ 1986  conda activate crocodile
+ 1987  du -sh /tmp/pose_filter_yeiywpzq/
+ 1988  df
+ 1989  rm /tmp/pose_filter_yeiywpzq/ -rf
+ 1990  rm /tmp/poses_zst_wslv6kb3.npy 
+ 1991  ls
+ 1992  du -sh tests/1b7f/frag3-bwd/
+ 1993  du -sh tests/1b7f/frag3-fwd/
+ 1994  exit
+ 1995  exit
+ 1996  exit
+ 1997  conda activate crocodile
+ 1998  exit
+ 1999  cd WIP/protocols/
+ 2000  ls
+ 2001  conda activate crocodile
+ 2002  grep reduce *.py
+ 2003  code reduce-npy.py 
+ 2004  ls
+ 2005  cp ~/attract/tools/reduce-plan.py ..
+ 2006  cd ..
+ 2007  code reduce-plan.py 
+ 2008  cp ~/attract/tools/reduce.py .
+ 2009  code reduce.py 
+ 2010  rm reduce.py 
+ 2011  cp ~/attract/tools/reduce-npy.py .
+ 2012  code reduce-npy.py 
+ 2013  less ~/attract/tools/reduce.dat 
+ 2014  cp  ~/attract/tools/reduce.dat ../code/
+ 2015  less ../fraglib/templates/UG.pdb 
+ 2016  code ../code/reduce.dat 
+ 2017  head -n 1 ../fraglib/templates/UG-ppdb.npy 
+ 2018  ls
+ 2019  code *.pdb
+ 2020* 
+ 2021  cp protocols/get-coordinates.py  .
+ 2022  cp protocols/get-atomtypes.py .
+ 2023  python3 ../code/parse_pdb.py 1b7f_dom2-aar.pdb 1b7f_dom2-aar-ppdb.npy
+ 2024  python3 get-atomtypes.py 1b7f_dom2-aar-ppdb.npy 1b7f_dom2-aar-atomtypes.npy
+ 2025  python get-coordinates.py 1b7f_dom2-aar-ppdb.npy 1b7f_dom2-aar-ocordinates.npy
+ 2026  head -n 1 *.npy
+ 2027  code get-conformers.py
+ 2028  ln -s ../code/poses.py 
+ 2029  python3 get-conformers.py poses-1.npy.zst poses-1-conformers.npy
+ 2030  ln -s ../code/offsets.py 
+ 2031  python3 get-conformers.py poses-1.npy.zst poses-1-conformers.npy
+ 2032  python3 ../code/get-reduced-library.py 
+ 2033  python3 ../code/get-reduced-library.py GU 1b7f fraglib-GU-ex1b7f.npy
+ 2034  python3 ../code/get-reduced-library.py GU -x 1b7f fraglib-GU-ex1b7f.npy
+ 2035  head -n 1 fraglib-GU-ex1b7f.npy 
+ 2036  history >> saved_history.txt 
+ 2037  ls -l poses-1-conformers.npy 
+ 2038  ls -l poses-1.npy.zst 
+ 2039  rm poses-1.npy.zst 
+ 2040  cp ../tests/1b7f/frag3-bwd/poses-1.npy.zst .
+ 2041  du -sh *zst
+ 2042  du -sh offsets.py poses.py 
+ 2043  git add offsets.py poses.py 
+ 2044  ls -l offsets-1.dat 
+ 2045  rm offsets-1.dat 
+ 2046  du -sh fraglib-GU-ex1b7f.npy 
+ 2047  history >> HISTORY
+ 1021  cat RESULT 
+ 1022  ./nested.sh 
+ 1023  ./nesting.sh 
+ 1024  cp manyjobs.sh calc-pi-nested.sh
+ 1025  code calc-pi-nested.sh 
+ 1026  ./calc-pi-nested.sh 
+ 1027  ./calc-pi-nested.sh 10 100000001
+ 1028  code calc-pi-nesting.sh
+ 1029  chmod +x ./calc-pi-nesting.sh 
+ 1030  ./calc-pi-nesting.sh 
+ 1031  ./calc-pi-nesting.sh 10 100000001
+ 1032  ./calc-pi-nesting.sh 
+ 1033  ./calc-pi-nesting.sh 10 100000001
+ 1034  ./calc-pi-nesting.sh 40 100000002
+ 1035  ./calc-pi-nesting.sh 40 100000003
+ 1036  code .seamless.yaml 
+ 1037  ./calc-pi-nesting.sh 40 100000003
+ 1038  printenv | grep SEAMLESS
+ 1039  ./calc-pi-nesting.sh 40 100000003
+ 1040  ./calc-pi-nesting.sh 40 100000004
+ 1041  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1042  rm ~/seamless-buffers/cmd-test/* -rf
+ 1043  seamless-init 
+ 1044  ./calc-pi-nesting.sh 40 100000005
+ 1045  seamless-init 
+ 1046  ps -elf | grep '\-\-timeout'
+ 1047  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1048  seamless-init 
+ 1049  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1050  which seamless-init
+ 1051  printenv | grep SEAMLESS
+ 1052  seamless-init 
+ 1053  less seamless.yaml 
+ 1054  less .seamless.yaml 
+ 1055  seamless-init 
+ 1056  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1057  seamless-init 
+ 1058  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1059  seamless-init 
+ 1060  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1061  seamless-init 
+ 1062  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1063  seamless-init 
+ 1064  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1065  seamless-init 
+ 1066  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1067  seamless-init 
+ 1068  ./calc-pi-nesting.sh 50 100000006
+ 1069  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1070  seamless-init 
+ 1071  ./calc-pi-nesting.sh 50 1100000
+ 1072  ./calc-pi-nesting.sh 10 1100001
+ 1073  ./calc-pi-nesting.sh 10 2100001
+ 1074  ./calc-pi-nesting.sh 10 5100001
+ 1075  ./calc-pi-nesting.sh 10 10000001
+ 1076  ./calc-pi-nesting.sh 10 30000001
+ 1077  ./calc-pi-nesting.sh 10 100000001
+ 1078  ./calc-pi-nesting.sh 10 100000002
+ 1079  ./calc-pi-nesting.sh 10 50000002
+ 1080  ./calc-pi-nesting.sh 10 100000003
+ 1081  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1082  seamless-init 
+ 1083  ./calc-pi-nesting.sh 10 100000004
+ 1084  ./calc-pi-nesting.sh 10 100000005
+ 1085  ./nesting.sh 
+ 1086  ps -elf | grep daskserver
+ 1087  kill 1624891
+ 1088  ./nesting.sh 
+ 1089  ps -elf | grep daskserver
+ 1090  kill 1628938
+ 1091  printenv | grep SEAMLESS
+ 1092  seamless-init 
+ 1093  ./nesting.sh 
+ 1094  seamless-init 
+ 1095  ./nesting.sh 
+ 1096  seamless-run './nesting.sh'
+ 1097  seamless-run -vvv './nesting.sh'
+ 1098  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1099  seamless-run -vvv './nesting.sh'
+ 1100  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1101  seamless-run -vvv './nesting.sh'
+ 1102  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1103  seamless-run -vvv './nesting.sh'
+ 1104  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1105  seamless-init 
+ 1106  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1107  seamless-init 
+ 1108  seamless-run -vvv './nesting.sh'
+ 1109  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1110  seamless-run -vvv './nesting.sh'
+ 1111  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1112  seamless-run -vvv './nesting.sh'
+ 1113  seamless-init 
+ 1114  seamless-run -vvv './nesting.sh'
+ 1115  seamless-run './nesting.sh'
+ 1116  seamless-run './nested.sh | awk '\''{print "LINE " $0}'\'' '
+ 1117  seamless-run './nesting.sh'
+ 1118  seamless-init 
+ 1119  seamless-run './nesting.sh'
+ 1120  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1121  seamless-init 
+ 1122  seamless-run './nesting.sh'
+ 1123  printenv | grep SEAMLESS
+ 1124  seamless-run './nesting.sh'
+ 1125  less ~/.remote-http-launcher/server/daskserver-local-rw-cmd-test.log 
+ 1126  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1127  seamless-init 
+ 1128  seamless-run './nesting.sh'
+ 1129  less ~/.remote-http-launcher/server/daskserver-local-rw-cmd-test.log 
+ 1130  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1131  seamless-init 
+ 1132  seamless-run './nesting.sh'
+ 1133  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1134  seamless-init 
+ 1135  seamless-run './nesting.sh'
+ 1136  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1137  seamless-init 
+ 1138  seamless-run './nesting.sh'
+ 1139  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1140  seamless-init 
+ 1141  seamless-run './nesting.sh'
+ 1142  code seamless.yaml 
+ 1143  seamless-run './nesting.sh'
+ 1144  seamless-run 'bash -x nesting.sh'
+ 1145  seamless-run 'bash nesting.sh'
+ 1146  seamless-run 'bash nesting.sh nested.sh'
+ 1147  seamless-init 
+ 1148  seamless-run 'bash nesting.sh nested.sh'
+ 1149  seamless-init 
+ 1150  seamless-run 'bash nesting.sh nested.sh '
+ 1151  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1152  seamless-run 'bash nesting.sh nested.sh '
+ 1153  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1154  seamless-run 'bash nesting.sh nested.sh '
+ 1155  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1156  seamless-run 'bash nesting.sh nested.sh '
+ 1157  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1158  seamless-init 
+ 1159  seamless-run 'bash nesting.sh nested.sh '
+ 1160  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1161  seamless-init 
+ 1162  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1163  seamless-init 
+ 1164  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1165  seamless-init 
+ 1166  seamless-run 'bash nesting.sh nested.sh '
+ 1167  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1168  seamless-init 
+ 1169  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1170  seamless-init 
+ 1171  seamless-run 'bash nesting.sh nested.sh '
+ 1172  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1173  seamless-init 
+ 1174  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1175  seamless-init 
+ 1176  seamless-run 'bash nesting.sh nested.sh '
+ 1177  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1178  seamless-init 
+ 1179  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1180  seamless-init 
+ 1181  seamless-run 'bash nesting.sh nested.sh '
+ 1182  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1183  seamless-init 
+ 1184  seamless-run 'bash nesting.sh nested.sh '
+ 1185  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1186  seamless-init 
+ 1187  seamless-run 'bash nesting.sh nested.sh '
+ 1188  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1189  seamless-init 
+ 1190  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1191  seamless-init 
+ 1192  seamless-run 'bash nesting.sh nested.sh '
+ 1193  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1194  seamless-init 
+ 1195  seamless-run 'bash nesting.sh nested.sh '
+ 1196  python3 -c 'import seamless'
+ 1197  python3 -c 'import seamless.checksum'
+ 1198  python3 -c 'import seamless.checksum.calculate_checksum'
+ 1199  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1200  seamless-init 
+ 1201  seamless-run 'bash nesting.sh nested.sh '
+ 1202  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1203  seamless-init 
+ 1204  seamless-run 'bash nesting.sh nested.sh  '
+ 1205  rm calc_pi.job-* -f
+ 1206  ls
+ 1207  rm calc_pi-nested.job-* -f
+ 1208  rm nesting.sh nested.sh -f
+ 1209  ./calc-pi-nesting.sh 
+ 1210  ./calc-pi-nesting.sh 10 10000
+ 1211  ./calc-pi-nesting.sh 10 1000000
+ 1212  ./calc-pi-nesting.sh 10 10000000
+ 1213  ./calc-pi-nesting.sh 100 100000000
+ 1214  ./calc-pi-nesting.sh 102 100000000
+ 1215  ./calc-pi-nesting.sh 30 100000001
+ 1216  conda activate seamless1
+ 1217  htop
+ 1218  cd seamless-config/
+ 1219  pip install -e .
+ 1220  htop
+ 1221  git push
+ 1222  conda activate base
+ 1223  git push
+ 1224  exit
+ 1225  gh create
+ 1226  gh repo create
+ 1227  cd ..
+ 1228  rm -rf crocodile-lab/
+ 1229  gh repo create
+ 1230  cd crocodile-lab/
+ 1231  ls
+ 1232  code LICENSE 
+ 1233  code README
+ 1234  cp ~/nefertiti/nefertiti/functions/superimpose.py .
+ 1235  code superimpose.py 
+ 1236  conda activate base
+ 1237  cp ~/nefertiti/nefertiti/functions/write_pdb.py .
+ 1238  cp ~/nefertiti/nefertiti/functions/parse_pdb.py .
+ 1239  code write_pdb.py 
+ 1240  cp ~/nefertiti/nefertiti/functions/parse_pdb.py .
+ 1241  cp ~/data/work/nucleotide-repositories/nucleotide-fragment-templates/A.pdb .
+ 1242  cp ~/data/work/nucleotide-repositories/nucleotide-library/library/dinuc-CA-0.5.npy .
+ 1243  cp ~/data/work/nucleotide-repositories/nucleotide-library/library/dinuc-AC-0.5.npy .
+ 1244  code .gitignore 
+ 1245  which seamless-checksum 
+ 1246  cp ~/seamless1/seamless-base/bin/seamless-checksum $(which seamless-checksum)
+ 1247  seamless-checksum dinuc-AC-0.5.npy 
+ 1248  seamless-checksum --hepl
+ 1249  seamless-checksum --help
+ 1250  seamless-checksum dinuc-AC-0.5.npy > dinuc-AC-0.5.npy.CHECKSUM
+ 1251  seamless-checksum dinuc-CA-0.5.npy > dinuc-CA-0.5.npy.CHECKSUM
+ 1252  head dinuc-*CHECKSUM
+ 1253  code select-library.py
+ 1254  wc -l A.pdb 
+ 1255  python3 select-library.py 
+ 1256  ls
+ 1257  head -n 1 libP.npy 
+ 1258  head -n 1 libPP.npy 
+ 1259  code fit-bruteforce.py
+ 1260  python3 kabsch-all.py 
+ 1261  ;s
+ 1262  ls
+ 1263  python3 select-library.py 
+ 1264  ls *.py
+ 1265  python3 kabsch-all.py 
+ 1266  code PIPELINE.txt
+ 1267  python3 fit-bruteforce.py 
+ 1268  head -n 1 fit-bruteforce.npy 
+ 1269  ipython3
+ 1270  code test1.py
+ 1271  ls
+ 1272  python3 test1.py 
+ 1273  code test1.png 
+ 1274  python3 test1.py 
+ 1275  code test1.png 
+ 1276  python3 test1.py 
+ 1277  code test1.png 
+ 1278  python3 test1.py 
+ 1279  code test1.png 
+ 1280  python3 test1.py 
+ 1281  cp test1.py test2.py
+ 1282  python3 test1.py 
+ 1283  mv test2.py testX.py
+ 1284  code test2.py
+ 1285  python3 test1.py 
+ 1286  python3 test2.py 
+ 1287  code test2.p
+ 1288  code test2.png 
+ 1289  python3 test2.py 
+ 1290  code test2.png 
+ 1291  python3 test2.py 
+ 1292  rm PQd0.npy 
+ 1293  python3 kabsch-all.py 
+ 1294  code testX.py 
+ 1295  code test3.py 
+ 1296  mv testX.py test3.py
+ 1297  code test3.py 
+ 1298  conda activate base
+ 1299  conda activate seamless1
+ 1300  cd seamless-transformer/tests/cmd/
+ 1301  cat ./calc-pi-nesting.sh 
+ 1302  ./calc-pi-nesting.sh 100 1000000
+ 1303  seamless-init 
+ 1304  ./calc-pi-nesting.sh 100 1000000
+ 1305  rm ~/.remote-http-launcher/client/* -f
+ 1306  seamless-init 
+ 1307  ./calc-pi-nesting.sh 100 1000000
+ 1308  rm ~/.remote-http-launcher/client/* -f
+ 1309  seamless-init 
+ 1310  ./calc-pi-nesting.sh 100 1000000
+ 1311  ./calc-pi-nesting.sh 100 10000000
+ 1312  ./calc-pi-nesting.sh 100 100000000
+ 1313  ./calc-pi-nesting.sh 200 1000000000
+ 1314  ./calc-pi-nesting.sh 1000 300000000
+ 1315  ./calc-pi-nesting.sh 100 300000001
+ 1316  ./calc-pi-nesting.sh 1000 300000001
+ 1317  ./calc-pi-nesting.sh 2000 100000000
+ 1318  ./calc-pi-nesting.sh 2000 100000008
+ 1319  ./calc-pi-nesting.sh 2000 1000000008
+ 1320  conda activate hashserver
+ 1321  ls *auth*
+ 1322  less allpdb-chain-auth.json.CHECKSUM 
+ 1323  ls */allpdb-chain-auth.json
+ 1324  less intermediate/allpdb-chain-auth.json 
+ 1325  ipython3
+ 1326  ls
+ 1327  conda activate seamless-exact
+ 1328  code summarize_header.py 
+ 1329  less allpdb-summarize-header.py 
+ 1330  less summarize_header_keys.txt 
+ 1331  ls
+ 1332  less allpdb-segments.txt 
+ 1333  less allpdb-keyorder.json
+ 1334  wc -l allpdb-keyorder.json
+ 1335  wc -l allpdb-segments.txt 
+ 1336  grep allpdb-segments *.py
+ 1337  less allpdb-detect-segments.py 
+ 1338  less allpdb-struc-index.json
+ 1339  wc -l allpdb-struc-index.json
+ 1340  wc -l allpdb-segments.txt 
+ 1341  less allpdb-segments.txt 
+ 1342  ls
+ 1343  less allpdb-detect-interfaces.py 
+ 1344  grep allpdb-interfaces *.py
+ 1345  less filter-interfaces.py 
+ 1346  du -sh allpdb-filtered-interfaces.mixed
+ 1347  head -n 2 allpdb-filtered-interfaces.mixed
+ 1348  conda activate seamless-exact
+ 1349  python3 filter-interfaces.py 
+ 1350  python3 summarize_header.py 
+ 1351  cd /tmp/
+ 1352  conda activate seamless-exact
+ 1353  pymol --help
+ 1354  pymol -d 'set cif_use_auth, off'
+ 1355  pymol --help
+ 1356  pymol --help | less
+ 1357  pymol -d 'set cif_use_auth, off'
+ 1358  pymol --help | less
+ 1359  pymol -d 'set cif_use_auth, off'
+ 1360  pymol -d set cif_use_auth, off
+ 1361  pymol -d 'set("cif_use_auth", "off")'
+ 1362  pymol -d 'set "cif_use_auth", "off"'
+ 1363  pymol -d 'set "cif_use_auth" "off"'
+ 1364  pymol -d 'set cif_use_auth off'
+ 1365  pymol -d 'cif_use_auth=off'
+ 1366  pymol -d 'cif_use_auth=0'
+ 1367  pymol -d 'cmd.set("cif_use_auth","off")'
+ 1368  pymol -d 'cmd.set("cif_use_auth","off")' ~/1b7f.cif 
+ 1369  pymol ~/1b7f.cif 
+ 1370  conda activate hashserver
+ 1371  conda activate hashserver
+ 1372  code test4.py
+ 1373  python3 kabsch-all.py 
+ 1374  python3 select-library.py 
+ 1375  python3 kabsch-all.py 
+ 1376  ls
+ 1377  python3 fit-bruteforce.py 
+ 1378  python3 test3.py 
+ 1379  code test3.png 
+ 1380  python3 test3.py 
+ 1381  code test3.png 
+ 1382  python3 test3.py 
+ 1383  code test3.png 
+ 1384  ls
+ 1385  python3 test3.py 
+ 1386  python3 test4.py 
+ 1387  ls
+ 1388  code select-library.py 
+ 1389  python3 select-library.py 
+ 1390  python3 kabsch-all.py 
+ 1391  python3 fit-bruteforce.py 
+ 1392  df -h
+ 1393  python3 fit-bruteforce.py 
+ 1394  python3 test3.py 
+ 1395  python3 test4.py 
+ 1396  seamless-checksum fit-bruteforce.npy > fit-bruteforce.npy.CHECKSUM
+ 1397  ls
+ 1398  ls -l fit-bruteforce.npy.gz 
+ 1399  du -sh fit-bruteforce.npy.gz 
+ 1400  du -sh fit-cache.npz 
+ 1401  rm fit-cache.npz 
+ 1402  ls -lt
+ 1403  ls -lt *npz
+ 1404  ls -lt | head
+ 1405  du -sh fit-cache.npz 
+ 1406  du -s fit-cache.npz 
+ 1407  htop
+ 1408  conda activate hashserver
+ 1409  less 1B7F-stack/frag3-stack/README 
+ 1410  cd 1B7F-stack/
+ 1411  head -n 1 *.npy
+ 1412  ls
+ 1413  cd frag3-stack/
+ 1414  ls
+ 1415  less README 
+ 1416  less RESULT 
+ 1417  head -n 1 rotaconformer-mask.npy 
+ 1418  ipython3
+ 1419  python3
+ 1420  conda deactivate
+ 1421  python3
+ 1422  ipython3
+ 1423  conda activate hashserver
+ 1424  pconda activate /home/sjoerd/miniconda3/envs/seamless-exact
+ 1425  ls *.png
+ 1426  code plot-angle-corrected-vector.png 
+ 1427  ls *.png
+ 1428  code plot-angle-z-vector.png 
+ 1429  code plot-dihedrals.png 
+ 1430  ls
+ 1431  ls ~/data/work/crocodile/*/*ring*
+ 1432  ls ~/data/work/crocodile/*/*.py
+ 1433  less  ~/data/work/crocodile/util/filter-rotamers-stacking-angle.py 
+ 1434  less  ~/data/work/crocodile/util/calc-stacking-angle.py 
+ 1435  less  ~/data/work/crocodile/util/pseudo-crocodile-2stack.py 
+ 1436  conda activate /home/sjoerd/miniconda3/envs/seamless-exact
+ 1437  conda activate seamless-exact
+ 1438  yhconda activate seamless-exact
+ 1439  python3 pair-freq-words.py 
+ 1440  python3 pair-freq-words.py > pair-freq-words.txt
+ 1441  code pair-freq-words.txt 
+ 1442  python3 pair-freq-words.py | tee pair-freq-words.txt
+ 1443  code pair-freq-words.txt 
+ 1444  python3 pair-freq-words.py | tee pair-freq-words.txt
+ 1445  rm word_matrix_*
+ 1446  python3 pair-freq-words.py | tee pair-freq-words.txt
+ 1447  code generate-words.py
+ 1448  python3 pair-freq-words.py | tee pair-freq-words.txt
+ 1449  python3 pair-freq-words.py |& less
+ 1450  ipython3
+ 1451  python3 pair-freq-words.py |& less
+ 1452  python3 pair-freq-words.py > pair-freq-words.txt 
+ 1453  ls 
+ 1454  git status
+ 1455  python3 generate-words.py 
+ 1456  python3 generate-words.py
+ 1457  python3 generate-words.py > x
+ 1458  code x
+ 1459  awk 'length($1) == 2' x | wc -l
+ 1460  wc -l x
+ 1461  python3 generate-words.py 
+ 1462  [A
+ 1463  python3 generate-words.py 
+ 1464  python3 generate-words.py -
+ 1465  python3 generate-words.py > x 2>&1
+ 1466  code x
+ 1467  python3 generate-words.py 
+ 1468  python3 generate-words.py > x 2>&1
+ 1469  python3 generate-words.py
+ 1470  python3 generate-words.py > x 2>&1
+ 1471  code x
+ 1472  python3 generate-words.py > x 2>&1
+ 1473  code x
+ 1474  python3 generate-words.py > x 2>&1
+ 1475  code x
+ 1476  python3 generate-words.py 
+ 1477  python3 generate-words.py  > x
+ 1478  sort -k1 x | less
+ 1479  wc -l x
+ 1480  awk 'length($2)==2' x | wc -l
+ 1481  awk 'length($1)==2' x | wc -l
+ 1482  python3 generate-words.py  
+ 1483  cd ../nucleotide-stacking-interaction
+ 1484  code .
+ 1485  cd ../nucleotide-library-fit/
+ 1486  python3 generate-words.py  
+ 1487  cd ../nucleotide-library-fit/
+ 1488  python3 generate-words.py  [A
+ 1489  [A
+ 1490  python3 generate-words.py  
+ 1491  python3 pair-freq-words.py 
+ 1492  python3 generate-words.py  
+ 1493  python3 generate-words.py  >& x
+ 1494  [A
+ 1495  python3 generate-words.py  >& x
+ 1496  python3 generate-words.py 
+ 1497  python3 generate-words.py  >& x
+ 1498  python3 generate-words.py 
+ 1499  python3 generate-words.py  >& x
+ 1500  conda activate seamless-exact
+ 1501  python3 generate-words.py  
+ 1502  pip install scipy
+ 1503  python3 -c 'from scipy.special import logcumsumexp'
+ 1504  conda list scipy
+ 1505  python3 generate-words.py  
+ 1506  htop
+ 1507  conda activate seamless-exact
+ 1508  htop
+ 1509  conda activate seamless-exact
+ 1510  conda activate crocodile
+ 1511  code ~/crocodile-test/crocodile_library_config.py 
+ 1512  git status
+ 1513  git diff
+ 1514  git status
+ 1515  code .gitignore 
+ 1516  git status
+ 1517  git commit -am 'snapshot OLD CODE'
+ 1518  git push
+ 1519  git log
+ 1520  cd ..
+ 1521  cp -r crocodile crocodile-OLD
+ 1522  du -sh crocodile-OLD/
+ 1523  du -sh crocodile-OLD/*
+ 1524  cd crocodile
+ 1525  git log
+ 1526  git push loria
+ 1527  git log
+ 1528  git 
+ 1529  git reset 622353 --hard
+ 1530  ls
+ 1531  EMPTY_ROOT=$(git commit-tree $(git hash-object -t tree /dev/null) -m "root: empty state")
+ 1532  git rebase --onto "$EMPTY_ROOT" --root main
+ 1533  git push --force-with-lease origin main
+ 1534  git push --force-with-lease loria main
+ 1535  git log
+ 1536  git branch old
+ 1537  git push origin old
+ 1538  git log
+ 1539  git push loria old
+ 1540  git log
+ 1541  git statis
+ 1542  git status
+ 1543  git log
+ 1544  git reset 458239f301 --hard
+ 1545  ls
+ 1546  rm -rf WIP/ crocodile/ test/ util/
+ 1547  git reset 458239f301 --hard
+ 1548  git push
+ 1549  git push --force
+ 1550  git push loria --force
+ 1551  conda activate crocodile
+ 1552  conda activate base
+ 1553  cp test6.py test-make-rotaconformers.py
+ 1554  code test-make-rotaconformers.py 
+ 1555  python3 test-make-rotaconformers.py 
+ 1556  code .gitignore 
+ 1557  conda activate base
+ 1558  conda activate seamless1
+ 1559  cd seamless-transformer/
+ 1560  cd tests/
+ 1561  cd dask/
+ 1562  cp test_transformation.py test_scratch.py
+ 1563  code test_scratch.py 
+ 1564  conda activate seamless1
+ 1565  conda activate base
+ 1566  cd ../seamless1/seamless-transformer/tests/
+ 1567  code test_py_module.py
+ 1568  code testmodule.py
+ 1569  conda activate seamless1
+ 1570  pytest -s test_py_module.py 
+ 1571  ls
+ 1572  less test_spawn.py 
+ 1573  pytest -s test_transformer.py 
+ 1574  pytest -s test_py_module.py 
+ 1575  pytest -s test_py_module.py::test_func4 
+ 1576  ls
+ 1577  code seamless.yaml .seamless.yaml 
+ 1578  pytest -s test_py_module.py
+ 1579  for i in *.py; do echo $i; pytest -s $i; done
+ 1580  for i in test_*.py; do echo $i; pytest -s $i; done
+ 1581  ls
+ 1582  cp test_py_module.py dask/
+ 1583  cd dask/
+ 1584  code test_py_module.py test_transformer.py 
+ 1585  grep config *.py
+ 1586  grep config ../*.py
+ 1587  less .seamless.yaml 
+ 1588  less seamless.yaml 
+ 1589  pytest -s test_py_module.py 
+ 1590  python3 -c 'import testmodule'
+ 1591  pytest -s test_py_module.py 
+ 1592  mv ../testmodule.py ../testingmodule.py
+ 1593  ln -s ../testingmodule.py 
+ 1594  pytest -s test_py_module.py 
+ 1595  cd ..
+ 1596  pytest -s test_py_module.py 
+ 1597  code test_py_module.py 
+ 1598  pytest -s test_py_module.py 
+ 1599  cd dask/
+ 1600  pytest -s test_py_module.py 
+ 1601  ipython3
+ 1602  seamless-init 
+ 1603  pytest -s test_scratch.py 
+ 1604  seamless-init 
+ 1605  pytest -s test_scratch.py 
+ 1606  conda activate base
+ 1607  aconda activate crocodile
+ 1608  conda activate seamless1
+ 1609  which seamless-checksum 
+ 1610  cat $(which seamless-checksum)
+ 1611  seamless-init exit
+ 1612  exit
+ 1613  conda activate crocodile
+ 1614  conda activate crocodile
+ 1615  code code/p*
+ 1616  cd code/
+ 1617  mv ppdb.py rna_pdb.py
+ 1618  ls
+ 1619  code library.py.DEPS.yaml 
+ 1620  grep import *.py | grep ppdb
+ 1621  code library.py
+ 1622  code library.py.DEPS.yaml 
+ 1623  code *.py
+ 1624  ls
+ 1625  python -c 'import library; library.config()'
+ 1626  pytest ../tests/test_library.py 
+ 1627  ls
+ 1628  cd ../tests/
+ 1629  pytest -s test_offsets.py 
+ 1630  pytest -s -v test_offsets.py 
+ 1631  pytest -s -vv test_offsets.py 
+ 1632  find .. -name '*.py'
+ 1633  find ../crocodile-OLD  -name '*.py'
+ 1634  ls -l ../crocodile-OLD
+ 1635  cd ..
+ 1636  ls -l ../crocodile-OLD
+ 1637  find ../crocodile-OLD  -name '*.py'
+ 1638  grep searchsorted `find ../crocodile-OLD  -name '*.py'`
+ 1639  ipython3
+ 1640  conda activate seamless1
+ 1641  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1642  rm ~/seamless-buffers/myproject/* -rf
+ 1643  cd seamless-transformer/tests/
+ 1644  seamless-init 
+ 1645  git status
+ 1646  pytest -s test_fingertip.py 
+ 1647  cd dask/
+ 1648  seamless-init 
+ 1649  pytest -s test_scratch.py 
+ 1650  code test_scratch.py 
+ 1651  cd ..
+ 1652  seamless-init 
+ 1653  pytest -s test_fingertip.py 
+ 1654  less .seamless.yaml 
+ 1655  less dask/.seamless.yaml 
+ 1656  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1657  ls -lt test* | less
+ 1658  grep stage test_fingertip.py 
+ 1659  seamless-init 
+ 1660  code seamless.yaml 
+ 1661  seamless-init --stage fingertip
+ 1662  pytest test_fingertip.py 
+ 1663  code dask/seamless.yaml 
+ 1664  cd dask/
+ 1665  pytest test_scratch.py 
+ 1666  seamless-init --stage persistent
+ 1667  ls *persist*
+ 1668  ls -lt test*
+ 1669  pytest -s test_scratch.py 
+ 1670  grep persistent test_*
+ 1671  grep set_stage test*.py
+ 1672  seamless-run-tcd ,,
+ 1673  cd ..
+ 1674  seamless-init --simple-remote
+ 1675  seamless-init --stagesimple-remote
+ 1676  seamless-init --stage simple-remote
+ 1677  cd persistent/
+ 1678  ls
+ 1679  cd ..
+ 1680  pytest -s persistent/test_scratch_persistent.py 
+ 1681  python persistent/scratch_persistent_write.py 
+ 1682  python persistent/scratch_persistent_verify.py 
+ 1683  pytest -s persistent/test_scratch_persistent.py 
+ 1684  python3 persistent/scratch_persistent_write.py 
+ 1685  ls /tmp/*scratch*.jsob
+ 1686  ls /tmp/*scratch*.json
+ 1687  ls /tmp/*/*scratch*.json
+ 1688  ls /tmp/*/scratch*.json
+ 1689  ls /tmp/*/*/scratch*.json
+ 1690  ls /tmp/*scratch*.json
+ 1691  ls /tmp/*/*/scratch*.json
+ 1692  less dask/test_scratch.py 
+ 1693  code dask/test_scratch.py 
+ 1694  cd dask/
+ 1695  pytest test_scratch.py 
+ 1696  pytest -s  test_scratch.py 
+ 1697  grep run-tra *.py
+ 1698  grep run-tra *../*/.py
+ 1699  grep run-tra ../*/.py
+ 1700  grep run-tra ../*/*.py
+ 1701  cd ..
+ 1702  code seamless.yaml 
+ 1703  code .seamless.yaml 
+ 1704  rm ~/seamless-buffers/* -rf
+ 1705  seamless-init --stage persistent
+ 1706  grep scratch *.py
+ 1707  code test_fingertip.py 
+ 1708  pytest -s test_fingertip.py 
+ 1709  grep scratch *.py
+ 1710  grep fingertip *.py
+ 1711  pytest -s test_fingertip.py 
+ 1712  seamless-init --stage persistent
+ 1713  seamless-init --stage persistent-test
+ 1714  pytest -s test_fingertip.py 
+ 1715  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1716  seamless-init --stage persistent-test
+ 1717  grep persistent *.py
+ 1718  code test_transformation_checksum.py 
+ 1719  pytest -s test_transformation_checksum.py 
+ 1720  seamless-init --stage fingertip
+ 1721  pytest -s test_fingertip.py 
+ 1722  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1723  rm ~/seamless-buffers/myproject -rf
+ 1724  seamless-init --stage fingertip
+ 1725  pytest -s test_fingertip.py 
+ 1726  code ~/seamless-buffers/myproject/STAGE-fingertip/a6/a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf 
+ 1727  cat  ~/seamless-buffers/myproject/STAGE-fingertip/53/53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3 
+ 1728  cat  ~/seamless-buffers/myproject/STAGE-fingertip/11/1121cfccd5913f0a63fec40a6ffd44ea64f9dc135c66634ba001d10bcf4302a2 
+ 1729  cat  ~/seamless-buffers/myproject/STAGE-fingertip/19/19441b5a4ee61589fcc9e8e411b956799d6a818574f5de70f362deed9c423cd2 
+ 1730  seamless-run-transformation --scratch --fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1731  seamless-run-transformation --stage fingertip --scratch --fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1732  pytest -s test_fingertip.py 
+ 1733  cat ~/.remote-http-launcher/server/database-local-rw-myproject--STAGE-fingertip.log 
+ 1734  cat ~/.remote-http-launcher/server/hashserver-local-rw-myproject--STAGE-fingertip.log 
+ 1735  sqlitebrowser ~/seamless-buffers/myproject/STAGE-fingertip/seamless.db 
+ 1736  bg
+ 1737  seamless-run-transformation --stage fingertip --scratch --fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1738  seamless-init --stage fingertip
+ 1739  seamless-run-transformation --stage fingertip --scratch --fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1740  seamless-resolve a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1741  seamless-resolve --stage fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1742  seamless-run-transformation --stage fingertip --scratch --fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1743  seamless-resolve --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4
+ 1744  seamless-resolve --fingertip --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4
+ 1745  seamless-download --fingertip
+ 1746  seamless-resolve --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4
+ 1747  seamless-fingertip --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4
+ 1748  seamless-fingertip --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4 -o z
+ 1749  seamless-fingertip --stage fingertip -o z  fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4 
+ 1750  seamless-fingertip --stage fingertip --output z  fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4 
+ 1751  cat z
+ 1752  seamless-upload z
+ 1753  seamless-upload --stage fingertip z
+ 1754  ls
+ 1755  cat z.CHECKSUM 
+ 1756  seamless-resolve --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4
+ 1757  conda activate seamless1
+ 1758  cd seamless-base/
+ 1759  pip install -e .
+ 1760  openssl 
+ 1761  openssl sha-256
+ 1762  ls
+ 1763  openssl sha-256 setup.cfg 
+ 1764  seamless-checksum setup.cfg 
+ 1765  cd ../seamless-remote/
+ 1766  pip install -e .
+ 1767  cd ../seamless-dask/
+ 1768  git status
+ 1769  cd seamless-base/
+ 1770  cd ..
+ 1771  cd seamless-transformer/
+ 1772  git status
+ 1773  git diff
+ 1774  diff seamless_transformer/worker.py  ../../seamless-transformer/seamless_transformer/worker.py 
+ 1775  cd ,,
+ 1776  cd ..
+ 1777  git status
+ 1778  cd seamless-base/
+ 1779  git status
+ 1780  cd ../
+ 1781  cd ../seamless-jobserver/
+ 1782  git log
+ 1783  git status
+ 1784  cd seamless-transformer/
+ 1785  git status
+ 1786  git diff
+ 1787  ls
+ 1788  cd ..
+ 1789  ls
+ 1790  git submodule foreach git reset --hard
+ 1791  git submodule foreach git pull origin main
+ 1792  rm seamless-base/bin/*
+ 1793  git submodule foreach git pull origin main
+ 1794  cd ../seamless-dask/
+ 1795  git submodule foreach git pull origin main
+ 1796  cd seamless-base/
+ 1797  git reset --hard
+ 1798  cd ..
+ 1799  git submodule foreach git pull origin main
+ 1800  rm seamless-base/bin/seamless-checksum-*
+ 1801  git submodule foreach git pull origin main
+ 1802  git status
+ 1803  cd seamless-transformer/
+ 1804  git pull origin main
+ 1805  git reset --hard
+ 1806  git pull origin main
+ 1807  cd ..
+ 1808  git status
+ 1809  git commit -am 'bump submodules'
+ 1810  git push
+ 1811  cd ../seamless-jobserver/
+ 1812  git status
+ 1813  git commit -am 'bump submodules'
+ 1814  git push
+ 1815  conda activate seamless1
+ 1816  conda activate crocodile
+ 1817  conda deactivate
+ 1818  conda env remove -n crocodile
+ 1819  less ../crocodile-OLD/create-environment.sh 
+ 1820  find  ../crocodile-OLD --name '*.y*ml'
+ 1821  find  ../crocodile-OLD -name '*.y*ml'
+ 1822  ipython3
+ 1823  ls
+ 1824  mkdir code
+ 1825  mv WIP/crocodile_library_config.py code/
+ 1826  code code/crocodile_library_config.py 
+ 1827  cp crocodile-OLD/crocodile/nuc/library.py code
+ 1828  code code/library.py 
+ 1829  rm code/crocodile_library_config.py 
+ 1830  cd code/
+ 1831  ln -s ../fraglib/templates/
+ 1832  ls /home/sjoerd/data/work/nucleotide-repositories/nucleotide-library/make-rotamers/result
+ 1833  ls /home/sjoerd/data/work/nucleotide-repositories/make-rotamers/result
+ 1834  ls /home/sjoerd/data/work/nucleotide-repositories/make-rotaconformers/rotaconformers/dinuc-AA-0.5.npy
+ 1835  seamless-checksum /home/sjoerd/data/work/nucleotide-repositories/make-rotaconformers/rotaconformers/dinuc-AA-0.5.npy
+ 1836  cat ../fraglib/rotamers/dinuc-AA-0.5.npy.CHECKSUM 
+ 1837  cp ../crocodile-OLD/crocodile/nuc/util/mutate.py .
+ 1838  code mutate.py 
+ 1839  cp ../crocodile-OLD/crocodile/nuc/util/ppdb.py .
+ 1840  code ppdb.py 
+ 1841  cp ../crocodile-OLD/crocodile/nuc/__init__.py 
+ 1842  code ../crocodile-OLD/crocodile/nuc/__init__.py 
+ 1843  python3 -c 'import library; library.config()'
+ 1844  conda activate crocodile
+ 1845  python3 -c 'import library; library.config()'
+ 1846  ls
+ 1847  cp ../crocodile-OLD/crocodile/parse_pdb.py .
+ 1848  python3 -c 'import library; library.config()'
+ 1849  code parse_pdb.py 
+ 1850  python3 -c 'import library; library.config()'
+ 1851  ls
+ 1852  grep sys *.py
+ 1853  ls
+ 1854  ipython3
+ 1855  pip install ipython
+ 1856  ipython
+ 1857  cd ..
+ 1858  mkdir tests
+ 1859  cd tests/
+ 1860  code test_library.py
+ 1861  pip install pytest
+ 1862  pytest test_library.py 
+ 1863  cd ..
+ 1864  ipython
+ 1865  cd code/
+ 1866  ipython
+ 1867  pytest test_library.py 
+ 1868  cd ../tests/
+ 1869  pytest test_library.py 
+ 1870  code ../code/library.py.DEPS.yaml
+ 1871  ls templates/AA-ppdb.npy
+ 1872  cd ..
+ 1873  ls templates/AA-ppdb.npy
+ 1874  cd code
+ 1875  ls templates/AA-ppdb.npy
+ 1876  ls
+ 1877  cd ..
+ 1878  ls
+ 1879  code architecture.txt 
+ 1880  less code/ppdb.py 
+ 1881  ls
+ 1882  code crocodile-OLD/util/pseudo-crocodile-2stack.py 
+ 1883  pytest -s tests/test_library.py 
+ 1884  code code/box.py
+ 1885  ipython3
+ 1886  cd tests/
+ 1887  pytest -s test_offsets.py 
+ 1888  ls
+ 1889  ls -l  ../code
+ 1890  ln -s ../fraglib/templates/
+ 1891  rm ../code/templates
+ 1892  pytest .
+ 1893  cp ../crocodile-OLD/crocodile/main/superimpose.py ../code/
+ 1894  code ../code/superimpose.py 
+ 1895  cd ..
+ 1896  mkdir specs
+ 1897  mkdir plans
+ 1898  cd tests/
+ 1899  pytest -s test_poses.py 
+ 1900  ln -s ../code
+ 1901  pytest -s test_poses.py 
+ 1902  pytest -s test_offsets.py 
+ 1903  pytest -s test_poses.py 
+ 1904  pytest -s test_offsets.py 
+ 1905  pytest -s test_poses.py 
+ 1906  ls
+ 1907  cd ..
+ 1908  ls
+ 1909  code plans/poses.md 
+ 1910  ls
+ 1911  cd tests/
+ 1912  ls
+ 1913  mkdir 1b7f
+ 1914  ls  ~/crocodile-test/*.pdb
+ 1915  less  ~/crocodile-test/reference.pdb 
+ 1916  cp  ~/crocodile-test/reference.pdb 1b7f/rna.pdb
+ 1917  cd ~/crocodile-test/
+ 1918  ls
+ 1919  ls *.pdb
+ 1920  ls */*.pdb
+ 1921  cp proteins/*.pdb  ~/data/work/crocodile/tests/1b7f
+ 1922  ls
+ 1923  find . -name '*anchor*'
+ 1924  ls ~/*/grow.py
+ 1925  ls ~/*/*/grow.py
+ 1926  ls ~/*/*/*/grow.py
+ 1927  ls ~/*/*/*/*/grow.py
+ 1928  ls ~/*/*/*/*/*/grow.py
+ 1929  ls ~/data/work/nucleotide-repositories/crocodile-protocol-OLD-protocols/1b7f-crocodile/
+ 1930  exit
+ 1931  conda activate crocodile
+ 1932  htio
+ 1933  htop
+ 1934  conda activate crocodile
+ 1935  code crocodile-OLD/util/pseudo-crocodile-2stack.py 
+ 1936  code crocodile-OLD/util/calc-all-rotamers-stacking-angle.py 
+ 1937  code crocodile-OLD/util/filter-rotamers-stacking-angle.py 
+ 1938  python3 code/stack.py 
+ 1939  python3 code/stack.py -h
+ 1940  python3 code/stack.py 
+ 1941  htop
+ 1942  conda activate crocodile
+ 1943  head -n 1  ~/data/work/nucleotide-repositories/make-rotaconformers/rotaconformers/dinuc-CA-0.5.npy
+ 1944  head -n 1  ~/data/work/nucleotide-repositories/make-rotaconformers/rotaconformers/dinuc-CA-0.5-extension.npy
+ 1945  ipython3
+ 1946  conda activate crocodile
+ 1947  scp /home/sjoerd/.crocodile/fraglib.yaml mbi-frontend:
+ 1948  ssh sisr@sb-node1
+ 1949  code ~/professional-TODO/
+ 1950  code ~/.seamless/clusters/mbi.yaml 
+ 1951  ssh sisr@mbi-storage2
+ 1952  ssh sisr@mbi-storage
+ 1953  ssh sisr@avicenne
+ 1954  ssh sisr@sb-cluster
+ 1955  ssh sisr@sbcluster
+ 1956  ssh sisr@sbcluster-ib
+ 1957  ssh sisr@mbi-frontend
+ 1958  exit
+ 1959  ssh mbi-frontend
+ 1960  exit
+ 1961  ssh sisr@sb-node2
+ 1962  exit
+ 1963  conda activate crocodile
+ 1964  git push loria
+ 1965  git push
+ 1966  cd tests/1b7f/
+ 1967  code stack-frag3-fwd.sh 
+ 1968  ./stack-frag3-fwd.sh 
+ 1969  man zstd 
+ 1970  du -sh frag3-fwd/
+ 1971  du -sh frag3-fwd/*
+ 1972  du -sh frag3-fwd/
+ 1973  zstdmt --rm frag3-fwd/*.npy
+ 1974  df -h
+ 1975  code stack-frag3-bwd.sh 
+ 1976  time ./stack-frag3-bwd.sh 
+ 1977  zstdmt --rm frag3-bwd/*.npy 
+ 1978  python3 code/filter_identical_poses.py frag3-bwd/ frag3-fwd/ frag3-merged
+ 1979  df
+ 1980  time python3 code/filter_identical_poses.py frag3-bwd/ frag3-fwd/ frag3-merged
+ 1981  conda activate crocodile
+ 1982  ls /tmp/ -ld | less
+ 1983  cd /tmp/
+ 1984  ls /tmp/ -ld | less
+ 1985  cd 
+ 1986  conda activate crocodile
+ 1987  du -sh /tmp/pose_filter_yeiywpzq/
+ 1988  df
+ 1989  rm /tmp/pose_filter_yeiywpzq/ -rf
+ 1990  rm /tmp/poses_zst_wslv6kb3.npy 
+ 1991  ls
+ 1992  du -sh tests/1b7f/frag3-bwd/
+ 1993  du -sh tests/1b7f/frag3-fwd/
+ 1994  exit
+ 1995  exit
+ 1996  exit
+ 1997  conda activate crocodile
+ 1998  exit
+ 1999  cd tests/
+ 2000  conda activate crocodile
+ 2001  cd 1b7f/
+ 2002  code stack-frag3-bwd.sh 
+ 2003  cd ../../crocodile-OLD
+ 2004  ls
+ 2005  find . -name '*.py'
+ 2006  grep reduce `find . -name '*.py'`
+ 2007  cd ../WIP/
+ 2008  conda activate jax
+ 2009  ls
+ 2010  python /home/sjoerd/data/work/crocodile/WIP/protocols/score-attract-jax.py 
+ 2011  python /home/sjoerd/data/work/crocodile/WIP/protocols/score-attract-jax.py --atrec b7f_dom2-aar-atomtypes.npy --grid 1b7f_dom2-aar.grid 
+ 2012  python /home/sjoerd/data/work/crocodile/WIP/protocols/score-attract-jax.py --atrec b7f_dom2-aar-atomtypes.npy --grid 1b7f_dom2-aar.grid  --atlig UG-atomtypes.npy 
+ 2013  python /home/sjoerd/data/work/crocodile/WIP/protocols/score-attract-jax.py --atrec b7f_dom2-aar-atomtypes.npy --grid 1b7f_dom2-aar.grid  --atlig UG-atomtypes.npy --conformers poses-1-conformers.npy 
+ 2014  python /home/sjoerd/data/work/crocodile/WIP/protocols/score-attract-jax.py --atrec b7f_dom2-aar-atomtypes.npy --grid 1b7f_dom2-aar.grid  --atlig UG-atomtypes.npy --conformers poses-1-conformers.npy rotamer_matrix.npy 
+ 2015  python /home/sjoerd/data/work/crocodile/WIP/protocols/score-attract-jax.py --atrec b7f_dom2-aar-atomtypes.npy --grid 1b7f_dom2-aar.grid  --atlig UG-atomtypes.npy --conformers poses-1-conformers.npy rotamer_matrix.npy 1b7f_dom2-aar-ocordinates.npy 
+ 2016  python /home/sjoerd/data/work/crocodile/WIP/protocols/score-attract-jax.py --atrec b7f_dom2-aar-atomtypes.npy --grid 1b7f_dom2-aar.grid  --atlig UG-atomtypes.npy --conformers poses-1-conformers.npy rotamer_matrix.npy 1b7f_dom2-aar-ocordinates.npy fraglib-GU-ex1b7f.npy
+ 2017  head -n 1 rotamer_matrix.npy 
+ 2018  history > saved_history.txt
+ 2019  code saved_history.txt 
+ 2020  history >> HISTORY
+ 1014  ps -elf | grep '\-
+ 1015  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1016  seamless-init 
+ 1017  ./nesting.sh 
+ 1018  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1019  ./nesting.sh 
+ 1020  ./nested.sh 
+ 1021  cat RESULT 
+ 1022  ./nested.sh 
+ 1023  ./nesting.sh 
+ 1024  cp manyjobs.sh calc-pi-nested.sh
+ 1025  code calc-pi-nested.sh 
+ 1026  ./calc-pi-nested.sh 
+ 1027  ./calc-pi-nested.sh 10 100000001
+ 1028  code calc-pi-nesting.sh
+ 1029  chmod +x ./calc-pi-nesting.sh 
+ 1030  ./calc-pi-nesting.sh 
+ 1031  ./calc-pi-nesting.sh 10 100000001
+ 1032  ./calc-pi-nesting.sh 
+ 1033  ./calc-pi-nesting.sh 10 100000001
+ 1034  ./calc-pi-nesting.sh 40 100000002
+ 1035  ./calc-pi-nesting.sh 40 100000003
+ 1036  code .seamless.yaml 
+ 1037  ./calc-pi-nesting.sh 40 100000003
+ 1038  printenv | grep SEAMLESS
+ 1039  ./calc-pi-nesting.sh 40 100000003
+ 1040  ./calc-pi-nesting.sh 40 100000004
+ 1041  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1042  rm ~/seamless-buffers/cmd-test/* -rf
+ 1043  seamless-init 
+ 1044  ./calc-pi-nesting.sh 40 100000005
+ 1045  seamless-init 
+ 1046  ps -elf | grep '\-\-timeout'
+ 1047  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1048  seamless-init 
+ 1049  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1050  which seamless-init
+ 1051  printenv | grep SEAMLESS
+ 1052  seamless-init 
+ 1053  less seamless.yaml 
+ 1054  less .seamless.yaml 
+ 1055  seamless-init 
+ 1056  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1057  seamless-init 
+ 1058  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1059  seamless-init 
+ 1060  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1061  seamless-init 
+ 1062  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1063  seamless-init 
+ 1064  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1065  seamless-init 
+ 1066  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1067  seamless-init 
+ 1068  ./calc-pi-nesting.sh 50 100000006
+ 1069  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1070  seamless-init 
+ 1071  ./calc-pi-nesting.sh 50 1100000
+ 1072  ./calc-pi-nesting.sh 10 1100001
+ 1073  ./calc-pi-nesting.sh 10 2100001
+ 1074  ./calc-pi-nesting.sh 10 5100001
+ 1075  ./calc-pi-nesting.sh 10 10000001
+ 1076  ./calc-pi-nesting.sh 10 30000001
+ 1077  ./calc-pi-nesting.sh 10 100000001
+ 1078  ./calc-pi-nesting.sh 10 100000002
+ 1079  ./calc-pi-nesting.sh 10 50000002
+ 1080  ./calc-pi-nesting.sh 10 100000003
+ 1081  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1082  seamless-init 
+ 1083  ./calc-pi-nesting.sh 10 100000004
+ 1084  ./calc-pi-nesting.sh 10 100000005
+ 1085  ./nesting.sh 
+ 1086  ps -elf | grep daskserver
+ 1087  kill 1624891
+ 1088  ./nesting.sh 
+ 1089  ps -elf | grep daskserver
+ 1090  kill 1628938
+ 1091  printenv | grep SEAMLESS
+ 1092  seamless-init 
+ 1093  ./nesting.sh 
+ 1094  seamless-init 
+ 1095  ./nesting.sh 
+ 1096  seamless-run './nesting.sh'
+ 1097  seamless-run -vvv './nesting.sh'
+ 1098  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1099  seamless-run -vvv './nesting.sh'
+ 1100  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1101  seamless-run -vvv './nesting.sh'
+ 1102  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1103  seamless-run -vvv './nesting.sh'
+ 1104  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1105  seamless-init 
+ 1106  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1107  seamless-init 
+ 1108  seamless-run -vvv './nesting.sh'
+ 1109  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1110  seamless-run -vvv './nesting.sh'
+ 1111  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1112  seamless-run -vvv './nesting.sh'
+ 1113  seamless-init 
+ 1114  seamless-run -vvv './nesting.sh'
+ 1115  seamless-run './nesting.sh'
+ 1116  seamless-run './nested.sh | awk '\''{print "LINE " $0}'\'' '
+ 1117  seamless-run './nesting.sh'
+ 1118  seamless-init 
+ 1119  seamless-run './nesting.sh'
+ 1120  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1121  seamless-init 
+ 1122  seamless-run './nesting.sh'
+ 1123  printenv | grep SEAMLESS
+ 1124  seamless-run './nesting.sh'
+ 1125  less ~/.remote-http-launcher/server/daskserver-local-rw-cmd-test.log 
+ 1126  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1127  seamless-init 
+ 1128  seamless-run './nesting.sh'
+ 1129  less ~/.remote-http-launcher/server/daskserver-local-rw-cmd-test.log 
+ 1130  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1131  seamless-init 
+ 1132  seamless-run './nesting.sh'
+ 1133  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1134  seamless-init 
+ 1135  seamless-run './nesting.sh'
+ 1136  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1137  seamless-init 
+ 1138  seamless-run './nesting.sh'
+ 1139  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1140  seamless-init 
+ 1141  seamless-run './nesting.sh'
+ 1142  code seamless.yaml 
+ 1143  seamless-run './nesting.sh'
+ 1144  seamless-run 'bash -x nesting.sh'
+ 1145  seamless-run 'bash nesting.sh'
+ 1146  seamless-run 'bash nesting.sh nested.sh'
+ 1147  seamless-init 
+ 1148  seamless-run 'bash nesting.sh nested.sh'
+ 1149  seamless-init 
+ 1150  seamless-run 'bash nesting.sh nested.sh '
+ 1151  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1152  seamless-run 'bash nesting.sh nested.sh '
+ 1153  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1154  seamless-run 'bash nesting.sh nested.sh '
+ 1155  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1156  seamless-run 'bash nesting.sh nested.sh '
+ 1157  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1158  seamless-init 
+ 1159  seamless-run 'bash nesting.sh nested.sh '
+ 1160  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1161  seamless-init 
+ 1162  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1163  seamless-init 
+ 1164  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1165  seamless-init 
+ 1166  seamless-run 'bash nesting.sh nested.sh '
+ 1167  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1168  seamless-init 
+ 1169  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1170  seamless-init 
+ 1171  seamless-run 'bash nesting.sh nested.sh '
+ 1172  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1173  seamless-init 
+ 1174  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1175  seamless-init 
+ 1176  seamless-run 'bash nesting.sh nested.sh '
+ 1177  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1178  seamless-init 
+ 1179  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1180  seamless-init 
+ 1181  seamless-run 'bash nesting.sh nested.sh '
+ 1182  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1183  seamless-init 
+ 1184  seamless-run 'bash nesting.sh nested.sh '
+ 1185  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1186  seamless-init 
+ 1187  seamless-run 'bash nesting.sh nested.sh '
+ 1188  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1189  seamless-init 
+ 1190  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1191  seamless-init 
+ 1192  seamless-run 'bash nesting.sh nested.sh '
+ 1193  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1194  seamless-init 
+ 1195  seamless-run 'bash nesting.sh nested.sh '
+ 1196  python3 -c 'import seamless'
+ 1197  python3 -c 'import seamless.checksum'
+ 1198  python3 -c 'import seamless.checksum.calculate_checksum'
+ 1199  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1200  seamless-init 
+ 1201  seamless-run 'bash nesting.sh nested.sh '
+ 1202  ps -elf | grep daskserver | awk '{print $4}' | xargs kill
+ 1203  seamless-init 
+ 1204  seamless-run 'bash nesting.sh nested.sh  '
+ 1205  rm calc_pi.job-* -f
+ 1206  ls
+ 1207  rm calc_pi-nested.job-* -f
+ 1208  rm nesting.sh nested.sh -f
+ 1209  ./calc-pi-nesting.sh 
+ 1210  ./calc-pi-nesting.sh 10 10000
+ 1211  ./calc-pi-nesting.sh 10 1000000
+ 1212  ./calc-pi-nesting.sh 10 10000000
+ 1213  ./calc-pi-nesting.sh 100 100000000
+ 1214  ./calc-pi-nesting.sh 102 100000000
+ 1215  ./calc-pi-nesting.sh 30 100000001
+ 1216  conda activate seamless1
+ 1217  htop
+ 1218  cd seamless-config/
+ 1219  pip install -e .
+ 1220  htop
+ 1221  git push
+ 1222  conda activate base
+ 1223  git push
+ 1224  exit
+ 1225  gh create
+ 1226  gh repo create
+ 1227  cd ..
+ 1228  rm -rf crocodile-lab/
+ 1229  gh repo create
+ 1230  cd crocodile-lab/
+ 1231  ls
+ 1232  code LICENSE 
+ 1233  code README
+ 1234  cp ~/nefertiti/nefertiti/functions/superimpose.py .
+ 1235  code superimpose.py 
+ 1236  conda activate base
+ 1237  cp ~/nefertiti/nefertiti/functions/write_pdb.py .
+ 1238  cp ~/nefertiti/nefertiti/functions/parse_pdb.py .
+ 1239  code write_pdb.py 
+ 1240  cp ~/nefertiti/nefertiti/functions/parse_pdb.py .
+ 1241  cp ~/data/work/nucleotide-repositories/nucleotide-fragment-templates/A.pdb .
+ 1242  cp ~/data/work/nucleotide-repositories/nucleotide-library/library/dinuc-CA-0.5.npy .
+ 1243  cp ~/data/work/nucleotide-repositories/nucleotide-library/library/dinuc-AC-0.5.npy .
+ 1244  code .gitignore 
+ 1245  which seamless-checksum 
+ 1246  cp ~/seamless1/seamless-base/bin/seamless-checksum $(which seamless-checksum)
+ 1247  seamless-checksum dinuc-AC-0.5.npy 
+ 1248  seamless-checksum --hepl
+ 1249  seamless-checksum --help
+ 1250  seamless-checksum dinuc-AC-0.5.npy > dinuc-AC-0.5.npy.CHECKSUM
+ 1251  seamless-checksum dinuc-CA-0.5.npy > dinuc-CA-0.5.npy.CHECKSUM
+ 1252  head dinuc-*CHECKSUM
+ 1253  code select-library.py
+ 1254  wc -l A.pdb 
+ 1255  python3 select-library.py 
+ 1256  ls
+ 1257  head -n 1 libP.npy 
+ 1258  head -n 1 libPP.npy 
+ 1259  code fit-bruteforce.py
+ 1260  python3 kabsch-all.py 
+ 1261  ;s
+ 1262  ls
+ 1263  python3 select-library.py 
+ 1264  ls *.py
+ 1265  python3 kabsch-all.py 
+ 1266  code PIPELINE.txt
+ 1267  python3 fit-bruteforce.py 
+ 1268  head -n 1 fit-bruteforce.npy 
+ 1269  ipython3
+ 1270  code test1.py
+ 1271  ls
+ 1272  python3 test1.py 
+ 1273  code test1.png 
+ 1274  python3 test1.py 
+ 1275  code test1.png 
+ 1276  python3 test1.py 
+ 1277  code test1.png 
+ 1278  python3 test1.py 
+ 1279  code test1.png 
+ 1280  python3 test1.py 
+ 1281  cp test1.py test2.py
+ 1282  python3 test1.py 
+ 1283  mv test2.py testX.py
+ 1284  code test2.py
+ 1285  python3 test1.py 
+ 1286  python3 test2.py 
+ 1287  code test2.p
+ 1288  code test2.png 
+ 1289  python3 test2.py 
+ 1290  code test2.png 
+ 1291  python3 test2.py 
+ 1292  rm PQd0.npy 
+ 1293  python3 kabsch-all.py 
+ 1294  code testX.py 
+ 1295  code test3.py 
+ 1296  mv testX.py test3.py
+ 1297  code test3.py 
+ 1298  conda activate base
+ 1299  conda activate seamless1
+ 1300  cd seamless-transformer/tests/cmd/
+ 1301  cat ./calc-pi-nesting.sh 
+ 1302  ./calc-pi-nesting.sh 100 1000000
+ 1303  seamless-init 
+ 1304  ./calc-pi-nesting.sh 100 1000000
+ 1305  rm ~/.remote-http-launcher/client/* -f
+ 1306  seamless-init 
+ 1307  ./calc-pi-nesting.sh 100 1000000
+ 1308  rm ~/.remote-http-launcher/client/* -f
+ 1309  seamless-init 
+ 1310  ./calc-pi-nesting.sh 100 1000000
+ 1311  ./calc-pi-nesting.sh 100 10000000
+ 1312  ./calc-pi-nesting.sh 100 100000000
+ 1313  ./calc-pi-nesting.sh 200 1000000000
+ 1314  ./calc-pi-nesting.sh 1000 300000000
+ 1315  ./calc-pi-nesting.sh 100 300000001
+ 1316  ./calc-pi-nesting.sh 1000 300000001
+ 1317  ./calc-pi-nesting.sh 2000 100000000
+ 1318  ./calc-pi-nesting.sh 2000 100000008
+ 1319  ./calc-pi-nesting.sh 2000 1000000008
+ 1320  conda activate hashserver
+ 1321  ls *auth*
+ 1322  less allpdb-chain-auth.json.CHECKSUM 
+ 1323  ls */allpdb-chain-auth.json
+ 1324  less intermediate/allpdb-chain-auth.json 
+ 1325  ipython3
+ 1326  ls
+ 1327  conda activate seamless-exact
+ 1328  code summarize_header.py 
+ 1329  less allpdb-summarize-header.py 
+ 1330  less summarize_header_keys.txt 
+ 1331  ls
+ 1332  less allpdb-segments.txt 
+ 1333  less allpdb-keyorder.json
+ 1334  wc -l allpdb-keyorder.json
+ 1335  wc -l allpdb-segments.txt 
+ 1336  grep allpdb-segments *.py
+ 1337  less allpdb-detect-segments.py 
+ 1338  less allpdb-struc-index.json
+ 1339  wc -l allpdb-struc-index.json
+ 1340  wc -l allpdb-segments.txt 
+ 1341  less allpdb-segments.txt 
+ 1342  ls
+ 1343  less allpdb-detect-interfaces.py 
+ 1344  grep allpdb-interfaces *.py
+ 1345  less filter-interfaces.py 
+ 1346  du -sh allpdb-filtered-interfaces.mixed
+ 1347  head -n 2 allpdb-filtered-interfaces.mixed
+ 1348  conda activate seamless-exact
+ 1349  python3 filter-interfaces.py 
+ 1350  python3 summarize_header.py 
+ 1351  cd /tmp/
+ 1352  conda activate seamless-exact
+ 1353  pymol --help
+ 1354  pymol -d 'set cif_use_auth, off'
+ 1355  pymol --help
+ 1356  pymol --help | less
+ 1357  pymol -d 'set cif_use_auth, off'
+ 1358  pymol --help | less
+ 1359  pymol -d 'set cif_use_auth, off'
+ 1360  pymol -d set cif_use_auth, off
+ 1361  pymol -d 'set("cif_use_auth", "off")'
+ 1362  pymol -d 'set "cif_use_auth", "off"'
+ 1363  pymol -d 'set "cif_use_auth" "off"'
+ 1364  pymol -d 'set cif_use_auth off'
+ 1365  pymol -d 'cif_use_auth=off'
+ 1366  pymol -d 'cif_use_auth=0'
+ 1367  pymol -d 'cmd.set("cif_use_auth","off")'
+ 1368  pymol -d 'cmd.set("cif_use_auth","off")' ~/1b7f.cif 
+ 1369  pymol ~/1b7f.cif 
+ 1370  conda activate hashserver
+ 1371  conda activate hashserver
+ 1372  code test4.py
+ 1373  python3 kabsch-all.py 
+ 1374  python3 select-library.py 
+ 1375  python3 kabsch-all.py 
+ 1376  ls
+ 1377  python3 fit-bruteforce.py 
+ 1378  python3 test3.py 
+ 1379  code test3.png 
+ 1380  python3 test3.py 
+ 1381  code test3.png 
+ 1382  python3 test3.py 
+ 1383  code test3.png 
+ 1384  ls
+ 1385  python3 test3.py 
+ 1386  python3 test4.py 
+ 1387  ls
+ 1388  code select-library.py 
+ 1389  python3 select-library.py 
+ 1390  python3 kabsch-all.py 
+ 1391  python3 fit-bruteforce.py 
+ 1392  df -h
+ 1393  python3 fit-bruteforce.py 
+ 1394  python3 test3.py 
+ 1395  python3 test4.py 
+ 1396  seamless-checksum fit-bruteforce.npy > fit-bruteforce.npy.CHECKSUM
+ 1397  ls
+ 1398  ls -l fit-bruteforce.npy.gz 
+ 1399  du -sh fit-bruteforce.npy.gz 
+ 1400  du -sh fit-cache.npz 
+ 1401  rm fit-cache.npz 
+ 1402  ls -lt
+ 1403  ls -lt *npz
+ 1404  ls -lt | head
+ 1405  du -sh fit-cache.npz 
+ 1406  du -s fit-cache.npz 
+ 1407  htop
+ 1408  conda activate hashserver
+ 1409  less 1B7F-stack/frag3-stack/README 
+ 1410  cd 1B7F-stack/
+ 1411  head -n 1 *.npy
+ 1412  ls
+ 1413  cd frag3-stack/
+ 1414  ls
+ 1415  less README 
+ 1416  less RESULT 
+ 1417  head -n 1 rotaconformer-mask.npy 
+ 1418  ipython3
+ 1419  python3
+ 1420  conda deactivate
+ 1421  python3
+ 1422  ipython3
+ 1423  conda activate hashserver
+ 1424  pconda activate /home/sjoerd/miniconda3/envs/seamless-exact
+ 1425  ls *.png
+ 1426  code plot-angle-corrected-vector.png 
+ 1427  ls *.png
+ 1428  code plot-angle-z-vector.png 
+ 1429  code plot-dihedrals.png 
+ 1430  ls
+ 1431  ls ~/data/work/crocodile/*/*ring*
+ 1432  ls ~/data/work/crocodile/*/*.py
+ 1433  less  ~/data/work/crocodile/util/filter-rotamers-stacking-angle.py 
+ 1434  less  ~/data/work/crocodile/util/calc-stacking-angle.py 
+ 1435  less  ~/data/work/crocodile/util/pseudo-crocodile-2stack.py 
+ 1436  conda activate /home/sjoerd/miniconda3/envs/seamless-exact
+ 1437  conda activate seamless-exact
+ 1438  yhconda activate seamless-exact
+ 1439  python3 pair-freq-words.py 
+ 1440  python3 pair-freq-words.py > pair-freq-words.txt
+ 1441  code pair-freq-words.txt 
+ 1442  python3 pair-freq-words.py | tee pair-freq-words.txt
+ 1443  code pair-freq-words.txt 
+ 1444  python3 pair-freq-words.py | tee pair-freq-words.txt
+ 1445  rm word_matrix_*
+ 1446  python3 pair-freq-words.py | tee pair-freq-words.txt
+ 1447  code generate-words.py
+ 1448  python3 pair-freq-words.py | tee pair-freq-words.txt
+ 1449  python3 pair-freq-words.py |& less
+ 1450  ipython3
+ 1451  python3 pair-freq-words.py |& less
+ 1452  python3 pair-freq-words.py > pair-freq-words.txt 
+ 1453  ls 
+ 1454  git status
+ 1455  python3 generate-words.py 
+ 1456  python3 generate-words.py
+ 1457  python3 generate-words.py > x
+ 1458  code x
+ 1459  awk 'length($1) == 2' x | wc -l
+ 1460  wc -l x
+ 1461  python3 generate-words.py 
+ 1462  [A
+ 1463  python3 generate-words.py 
+ 1464  python3 generate-words.py -
+ 1465  python3 generate-words.py > x 2>&1
+ 1466  code x
+ 1467  python3 generate-words.py 
+ 1468  python3 generate-words.py > x 2>&1
+ 1469  python3 generate-words.py
+ 1470  python3 generate-words.py > x 2>&1
+ 1471  code x
+ 1472  python3 generate-words.py > x 2>&1
+ 1473  code x
+ 1474  python3 generate-words.py > x 2>&1
+ 1475  code x
+ 1476  python3 generate-words.py 
+ 1477  python3 generate-words.py  > x
+ 1478  sort -k1 x | less
+ 1479  wc -l x
+ 1480  awk 'length($2)==2' x | wc -l
+ 1481  awk 'length($1)==2' x | wc -l
+ 1482  python3 generate-words.py  
+ 1483  cd ../nucleotide-stacking-interaction
+ 1484  code .
+ 1485  cd ../nucleotide-library-fit/
+ 1486  python3 generate-words.py  
+ 1487  cd ../nucleotide-library-fit/
+ 1488  python3 generate-words.py  [A
+ 1489  [A
+ 1490  python3 generate-words.py  
+ 1491  python3 pair-freq-words.py 
+ 1492  python3 generate-words.py  
+ 1493  python3 generate-words.py  >& x
+ 1494  [A
+ 1495  python3 generate-words.py  >& x
+ 1496  python3 generate-words.py 
+ 1497  python3 generate-words.py  >& x
+ 1498  python3 generate-words.py 
+ 1499  python3 generate-words.py  >& x
+ 1500  conda activate seamless-exact
+ 1501  python3 generate-words.py  
+ 1502  pip install scipy
+ 1503  python3 -c 'from scipy.special import logcumsumexp'
+ 1504  conda list scipy
+ 1505  python3 generate-words.py  
+ 1506  htop
+ 1507  conda activate seamless-exact
+ 1508  htop
+ 1509  conda activate seamless-exact
+ 1510  conda activate crocodile
+ 1511  code ~/crocodile-test/crocodile_library_config.py 
+ 1512  git status
+ 1513  git diff
+ 1514  git status
+ 1515  code .gitignore 
+ 1516  git status
+ 1517  git commit -am 'snapshot OLD CODE'
+ 1518  git push
+ 1519  git log
+ 1520  cd ..
+ 1521  cp -r crocodile crocodile-OLD
+ 1522  du -sh crocodile-OLD/
+ 1523  du -sh crocodile-OLD/*
+ 1524  cd crocodile
+ 1525  git log
+ 1526  git push loria
+ 1527  git log
+ 1528  git 
+ 1529  git reset 622353 --hard
+ 1530  ls
+ 1531  EMPTY_ROOT=$(git commit-tree $(git hash-object -t tree /dev/null) -m "root: empty state")
+ 1532  git rebase --onto "$EMPTY_ROOT" --root main
+ 1533  git push --force-with-lease origin main
+ 1534  git push --force-with-lease loria main
+ 1535  git log
+ 1536  git branch old
+ 1537  git push origin old
+ 1538  git log
+ 1539  git push loria old
+ 1540  git log
+ 1541  git statis
+ 1542  git status
+ 1543  git log
+ 1544  git reset 458239f301 --hard
+ 1545  ls
+ 1546  rm -rf WIP/ crocodile/ test/ util/
+ 1547  git reset 458239f301 --hard
+ 1548  git push
+ 1549  git push --force
+ 1550  git push loria --force
+ 1551  conda activate crocodile
+ 1552  conda activate base
+ 1553  cp test6.py test-make-rotaconformers.py
+ 1554  code test-make-rotaconformers.py 
+ 1555  python3 test-make-rotaconformers.py 
+ 1556  code .gitignore 
+ 1557  conda activate base
+ 1558  conda activate seamless1
+ 1559  cd seamless-transformer/
+ 1560  cd tests/
+ 1561  cd dask/
+ 1562  cp test_transformation.py test_scratch.py
+ 1563  code test_scratch.py 
+ 1564  conda activate seamless1
+ 1565  conda activate base
+ 1566  cd ../seamless1/seamless-transformer/tests/
+ 1567  code test_py_module.py
+ 1568  code testmodule.py
+ 1569  conda activate seamless1
+ 1570  pytest -s test_py_module.py 
+ 1571  ls
+ 1572  less test_spawn.py 
+ 1573  pytest -s test_transformer.py 
+ 1574  pytest -s test_py_module.py 
+ 1575  pytest -s test_py_module.py::test_func4 
+ 1576  ls
+ 1577  code seamless.yaml .seamless.yaml 
+ 1578  pytest -s test_py_module.py
+ 1579  for i in *.py; do echo $i; pytest -s $i; done
+ 1580  for i in test_*.py; do echo $i; pytest -s $i; done
+ 1581  ls
+ 1582  cp test_py_module.py dask/
+ 1583  cd dask/
+ 1584  code test_py_module.py test_transformer.py 
+ 1585  grep config *.py
+ 1586  grep config ../*.py
+ 1587  less .seamless.yaml 
+ 1588  less seamless.yaml 
+ 1589  pytest -s test_py_module.py 
+ 1590  python3 -c 'import testmodule'
+ 1591  pytest -s test_py_module.py 
+ 1592  mv ../testmodule.py ../testingmodule.py
+ 1593  ln -s ../testingmodule.py 
+ 1594  pytest -s test_py_module.py 
+ 1595  cd ..
+ 1596  pytest -s test_py_module.py 
+ 1597  code test_py_module.py 
+ 1598  pytest -s test_py_module.py 
+ 1599  cd dask/
+ 1600  pytest -s test_py_module.py 
+ 1601  ipython3
+ 1602  seamless-init 
+ 1603  pytest -s test_scratch.py 
+ 1604  seamless-init 
+ 1605  pytest -s test_scratch.py 
+ 1606  conda activate base
+ 1607  aconda activate crocodile
+ 1608  conda activate seamless1
+ 1609  which seamless-checksum 
+ 1610  cat $(which seamless-checksum)
+ 1611  seamless-init exit
+ 1612  exit
+ 1613  conda activate crocodile
+ 1614  conda activate crocodile
+ 1615  code code/p*
+ 1616  cd code/
+ 1617  mv ppdb.py rna_pdb.py
+ 1618  ls
+ 1619  code library.py.DEPS.yaml 
+ 1620  grep import *.py | grep ppdb
+ 1621  code library.py
+ 1622  code library.py.DEPS.yaml 
+ 1623  code *.py
+ 1624  ls
+ 1625  python -c 'import library; library.config()'
+ 1626  pytest ../tests/test_library.py 
+ 1627  ls
+ 1628  cd ../tests/
+ 1629  pytest -s test_offsets.py 
+ 1630  pytest -s -v test_offsets.py 
+ 1631  pytest -s -vv test_offsets.py 
+ 1632  find .. -name '*.py'
+ 1633  find ../crocodile-OLD  -name '*.py'
+ 1634  ls -l ../crocodile-OLD
+ 1635  cd ..
+ 1636  ls -l ../crocodile-OLD
+ 1637  find ../crocodile-OLD  -name '*.py'
+ 1638  grep searchsorted `find ../crocodile-OLD  -name '*.py'`
+ 1639  ipython3
+ 1640  conda activate seamless1
+ 1641  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1642  rm ~/seamless-buffers/myproject/* -rf
+ 1643  cd seamless-transformer/tests/
+ 1644  seamless-init 
+ 1645  git status
+ 1646  pytest -s test_fingertip.py 
+ 1647  cd dask/
+ 1648  seamless-init 
+ 1649  pytest -s test_scratch.py 
+ 1650  code test_scratch.py 
+ 1651  cd ..
+ 1652  seamless-init 
+ 1653  pytest -s test_fingertip.py 
+ 1654  less .seamless.yaml 
+ 1655  less dask/.seamless.yaml 
+ 1656  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1657  ls -lt test* | less
+ 1658  grep stage test_fingertip.py 
+ 1659  seamless-init 
+ 1660  code seamless.yaml 
+ 1661  seamless-init --stage fingertip
+ 1662  pytest test_fingertip.py 
+ 1663  code dask/seamless.yaml 
+ 1664  cd dask/
+ 1665  pytest test_scratch.py 
+ 1666  seamless-init --stage persistent
+ 1667  ls *persist*
+ 1668  ls -lt test*
+ 1669  pytest -s test_scratch.py 
+ 1670  grep persistent test_*
+ 1671  grep set_stage test*.py
+ 1672  seamless-run-tcd ,,
+ 1673  cd ..
+ 1674  seamless-init --simple-remote
+ 1675  seamless-init --stagesimple-remote
+ 1676  seamless-init --stage simple-remote
+ 1677  cd persistent/
+ 1678  ls
+ 1679  cd ..
+ 1680  pytest -s persistent/test_scratch_persistent.py 
+ 1681  python persistent/scratch_persistent_write.py 
+ 1682  python persistent/scratch_persistent_verify.py 
+ 1683  pytest -s persistent/test_scratch_persistent.py 
+ 1684  python3 persistent/scratch_persistent_write.py 
+ 1685  ls /tmp/*scratch*.jsob
+ 1686  ls /tmp/*scratch*.json
+ 1687  ls /tmp/*/*scratch*.json
+ 1688  ls /tmp/*/scratch*.json
+ 1689  ls /tmp/*/*/scratch*.json
+ 1690  ls /tmp/*scratch*.json
+ 1691  ls /tmp/*/*/scratch*.json
+ 1692  less dask/test_scratch.py 
+ 1693  code dask/test_scratch.py 
+ 1694  cd dask/
+ 1695  pytest test_scratch.py 
+ 1696  pytest -s  test_scratch.py 
+ 1697  grep run-tra *.py
+ 1698  grep run-tra *../*/.py
+ 1699  grep run-tra ../*/.py
+ 1700  grep run-tra ../*/*.py
+ 1701  cd ..
+ 1702  code seamless.yaml 
+ 1703  code .seamless.yaml 
+ 1704  rm ~/seamless-buffers/* -rf
+ 1705  seamless-init --stage persistent
+ 1706  grep scratch *.py
+ 1707  code test_fingertip.py 
+ 1708  pytest -s test_fingertip.py 
+ 1709  grep scratch *.py
+ 1710  grep fingertip *.py
+ 1711  pytest -s test_fingertip.py 
+ 1712  seamless-init --stage persistent
+ 1713  seamless-init --stage persistent-test
+ 1714  pytest -s test_fingertip.py 
+ 1715  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1716  seamless-init --stage persistent-test
+ 1717  grep persistent *.py
+ 1718  code test_transformation_checksum.py 
+ 1719  pytest -s test_transformation_checksum.py 
+ 1720  seamless-init --stage fingertip
+ 1721  pytest -s test_fingertip.py 
+ 1722  ps -elf | grep '\-\-timeout' | awk '{print $4}' | xargs kill
+ 1723  rm ~/seamless-buffers/myproject -rf
+ 1724  seamless-init --stage fingertip
+ 1725  pytest -s test_fingertip.py 
+ 1726  code ~/seamless-buffers/myproject/STAGE-fingertip/a6/a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf 
+ 1727  cat  ~/seamless-buffers/myproject/STAGE-fingertip/53/53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3 
+ 1728  cat  ~/seamless-buffers/myproject/STAGE-fingertip/11/1121cfccd5913f0a63fec40a6ffd44ea64f9dc135c66634ba001d10bcf4302a2 
+ 1729  cat  ~/seamless-buffers/myproject/STAGE-fingertip/19/19441b5a4ee61589fcc9e8e411b956799d6a818574f5de70f362deed9c423cd2 
+ 1730  seamless-run-transformation --scratch --fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1731  seamless-run-transformation --stage fingertip --scratch --fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1732  pytest -s test_fingertip.py 
+ 1733  cat ~/.remote-http-launcher/server/database-local-rw-myproject--STAGE-fingertip.log 
+ 1734  cat ~/.remote-http-launcher/server/hashserver-local-rw-myproject--STAGE-fingertip.log 
+ 1735  sqlitebrowser ~/seamless-buffers/myproject/STAGE-fingertip/seamless.db 
+ 1736  bg
+ 1737  seamless-run-transformation --stage fingertip --scratch --fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1738  seamless-init --stage fingertip
+ 1739  seamless-run-transformation --stage fingertip --scratch --fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1740  seamless-resolve a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1741  seamless-resolve --stage fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1742  seamless-run-transformation --stage fingertip --scratch --fingertip  a637f23574c2ad119260a7e5e6b79455e9a11975a6ae6ac3a95bc9ad6d2de5cf
+ 1743  seamless-resolve --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4
+ 1744  seamless-resolve --fingertip --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4
+ 1745  seamless-download --fingertip
+ 1746  seamless-resolve --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4
+ 1747  seamless-fingertip --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4
+ 1748  seamless-fingertip --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4 -o z
+ 1749  seamless-fingertip --stage fingertip -o z  fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4 
+ 1750  seamless-fingertip --stage fingertip --output z  fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4 
+ 1751  cat z
+ 1752  seamless-upload z
+ 1753  seamless-upload --stage fingertip z
+ 1754  ls
+ 1755  cat z.CHECKSUM 
+ 1756  seamless-resolve --stage fingertip   fda8772f02bc15bed1c4f6c098f0c9bb71307a472cfb8fd71fe2746ad8c037c4
+ 1757  conda activate seamless1
+ 1758  cd seamless-base/
+ 1759  pip install -e .
+ 1760  openssl 
+ 1761  openssl sha-256
+ 1762  ls
+ 1763  openssl sha-256 setup.cfg 
+ 1764  seamless-checksum setup.cfg 
+ 1765  cd ../seamless-remote/
+ 1766  pip install -e .
+ 1767  cd ../seamless-dask/
+ 1768  git status
+ 1769  cd seamless-base/
+ 1770  cd ..
+ 1771  cd seamless-transformer/
+ 1772  git status
+ 1773  git diff
+ 1774  diff seamless_transformer/worker.py  ../../seamless-transformer/seamless_transformer/worker.py 
+ 1775  cd ,,
+ 1776  cd ..
+ 1777  git status
+ 1778  cd seamless-base/
+ 1779  git status
+ 1780  cd ../
+ 1781  cd ../seamless-jobserver/
+ 1782  git log
+ 1783  git status
+ 1784  cd seamless-transformer/
+ 1785  git status
+ 1786  git diff
+ 1787  ls
+ 1788  cd ..
+ 1789  ls
+ 1790  git submodule foreach git reset --hard
+ 1791  git submodule foreach git pull origin main
+ 1792  rm seamless-base/bin/*
+ 1793  git submodule foreach git pull origin main
+ 1794  cd ../seamless-dask/
+ 1795  git submodule foreach git pull origin main
+ 1796  cd seamless-base/
+ 1797  git reset --hard
+ 1798  cd ..
+ 1799  git submodule foreach git pull origin main
+ 1800  rm seamless-base/bin/seamless-checksum-*
+ 1801  git submodule foreach git pull origin main
+ 1802  git status
+ 1803  cd seamless-transformer/
+ 1804  git pull origin main
+ 1805  git reset --hard
+ 1806  git pull origin main
+ 1807  cd ..
+ 1808  git status
+ 1809  git commit -am 'bump submodules'
+ 1810  git push
+ 1811  cd ../seamless-jobserver/
+ 1812  git status
+ 1813  git commit -am 'bump submodules'
+ 1814  git push
+ 1815  conda activate seamless1
+ 1816  conda activate crocodile
+ 1817  conda deactivate
+ 1818  conda env remove -n crocodile
+ 1819  less ../crocodile-OLD/create-environment.sh 
+ 1820  find  ../crocodile-OLD --name '*.y*ml'
+ 1821  find  ../crocodile-OLD -name '*.y*ml'
+ 1822  ipython3
+ 1823  ls
+ 1824  mkdir code
+ 1825  mv WIP/crocodile_library_config.py code/
+ 1826  code code/crocodile_library_config.py 
+ 1827  cp crocodile-OLD/crocodile/nuc/library.py code
+ 1828  code code/library.py 
+ 1829  rm code/crocodile_library_config.py 
+ 1830  cd code/
+ 1831  ln -s ../fraglib/templates/
+ 1832  ls /home/sjoerd/data/work/nucleotide-repositories/nucleotide-library/make-rotamers/result
+ 1833  ls /home/sjoerd/data/work/nucleotide-repositories/make-rotamers/result
+ 1834  ls /home/sjoerd/data/work/nucleotide-repositories/make-rotaconformers/rotaconformers/dinuc-AA-0.5.npy
+ 1835  seamless-checksum /home/sjoerd/data/work/nucleotide-repositories/make-rotaconformers/rotaconformers/dinuc-AA-0.5.npy
+ 1836  cat ../fraglib/rotamers/dinuc-AA-0.5.npy.CHECKSUM 
+ 1837  cp ../crocodile-OLD/crocodile/nuc/util/mutate.py .
+ 1838  code mutate.py 
+ 1839  cp ../crocodile-OLD/crocodile/nuc/util/ppdb.py .
+ 1840  code ppdb.py 
+ 1841  cp ../crocodile-OLD/crocodile/nuc/__init__.py 
+ 1842  code ../crocodile-OLD/crocodile/nuc/__init__.py 
+ 1843  python3 -c 'import library; library.config()'
+ 1844  conda activate crocodile
+ 1845  python3 -c 'import library; library.config()'
+ 1846  ls
+ 1847  cp ../crocodile-OLD/crocodile/parse_pdb.py .
+ 1848  python3 -c 'import library; library.config()'
+ 1849  code parse_pdb.py 
+ 1850  python3 -c 'import library; library.config()'
+ 1851  ls
+ 1852  grep sys *.py
+ 1853  ls
+ 1854  ipython3
+ 1855  pip install ipython
+ 1856  ipython
+ 1857  cd ..
+ 1858  mkdir tests
+ 1859  cd tests/
+ 1860  code test_library.py
+ 1861  pip install pytest
+ 1862  pytest test_library.py 
+ 1863  cd ..
+ 1864  ipython
+ 1865  cd code/
+ 1866  ipython
+ 1867  pytest test_library.py 
+ 1868  cd ../tests/
+ 1869  pytest test_library.py 
+ 1870  code ../code/library.py.DEPS.yaml
+ 1871  ls templates/AA-ppdb.npy
+ 1872  cd ..
+ 1873  ls templates/AA-ppdb.npy
+ 1874  cd code
+ 1875  ls templates/AA-ppdb.npy
+ 1876  ls
+ 1877  cd ..
+ 1878  ls
+ 1879  code architecture.txt 
+ 1880  less code/ppdb.py 
+ 1881  ls
+ 1882  code crocodile-OLD/util/pseudo-crocodile-2stack.py 
+ 1883  pytest -s tests/test_library.py 
+ 1884  code code/box.py
+ 1885  ipython3
+ 1886  cd tests/
+ 1887  pytest -s test_offsets.py 
+ 1888  ls
+ 1889  ls -l  ../code
+ 1890  ln -s ../fraglib/templates/
+ 1891  rm ../code/templates
+ 1892  pytest .
+ 1893  cp ../crocodile-OLD/crocodile/main/superimpose.py ../code/
+ 1894  code ../code/superimpose.py 
+ 1895  cd ..
+ 1896  mkdir specs
+ 1897  mkdir plans
+ 1898  cd tests/
+ 1899  pytest -s test_poses.py 
+ 1900  ln -s ../code
+ 1901  pytest -s test_poses.py 
+ 1902  pytest -s test_offsets.py 
+ 1903  pytest -s test_poses.py 
+ 1904  pytest -s test_offsets.py 
+ 1905  pytest -s test_poses.py 
+ 1906  ls
+ 1907  cd ..
+ 1908  ls
+ 1909  code plans/poses.md 
+ 1910  ls
+ 1911  cd tests/
+ 1912  ls
+ 1913  mkdir 1b7f
+ 1914  ls  ~/crocodile-test/*.pdb
+ 1915  less  ~/crocodile-test/reference.pdb 
+ 1916  cp  ~/crocodile-test/reference.pdb 1b7f/rna.pdb
+ 1917  cd ~/crocodile-test/
+ 1918  ls
+ 1919  ls *.pdb
+ 1920  ls */*.pdb
+ 1921  cp proteins/*.pdb  ~/data/work/crocodile/tests/1b7f
+ 1922  ls
+ 1923  find . -name '*anchor*'
+ 1924  ls ~/*/grow.py
+ 1925  ls ~/*/*/grow.py
+ 1926  ls ~/*/*/*/grow.py
+ 1927  ls ~/*/*/*/*/grow.py
+ 1928  ls ~/*/*/*/*/*/grow.py
+ 1929  ls ~/data/work/nucleotide-repositories/crocodile-protocol-OLD-protocols/1b7f-crocodile/
+ 1930  exit
+ 1931  conda activate crocodile
+ 1932  htio
+ 1933  htop
+ 1934  conda activate crocodile
+ 1935  code crocodile-OLD/util/pseudo-crocodile-2stack.py 
+ 1936  code crocodile-OLD/util/calc-all-rotamers-stacking-angle.py 
+ 1937  code crocodile-OLD/util/filter-rotamers-stacking-angle.py 
+ 1938  python3 code/stack.py 
+ 1939  python3 code/stack.py -h
+ 1940  python3 code/stack.py 
+ 1941  htop
+ 1942  conda activate crocodile
+ 1943  head -n 1  ~/data/work/nucleotide-repositories/make-rotaconformers/rotaconformers/dinuc-CA-0.5.npy
+ 1944  head -n 1  ~/data/work/nucleotide-repositories/make-rotaconformers/rotaconformers/dinuc-CA-0.5-extension.npy
+ 1945  ipython3
+ 1946  conda activate crocodile
+ 1947  scp /home/sjoerd/.crocodile/fraglib.yaml mbi-frontend:
+ 1948  ssh sisr@sb-node1
+ 1949  code ~/professional-TODO/
+ 1950  code ~/.seamless/clusters/mbi.yaml 
+ 1951  ssh sisr@mbi-storage2
+ 1952  ssh sisr@mbi-storage
+ 1953  ssh sisr@avicenne
+ 1954  ssh sisr@sb-cluster
+ 1955  ssh sisr@sbcluster
+ 1956  ssh sisr@sbcluster-ib
+ 1957  ssh sisr@mbi-frontend
+ 1958  exit
+ 1959  ssh mbi-frontend
+ 1960  exit
+ 1961  ssh sisr@sb-node2
+ 1962  exit
+ 1963  conda activate crocodile
+ 1964  git push loria
+ 1965  git push
+ 1966  cd tests/1b7f/
+ 1967  code stack-frag3-fwd.sh 
+ 1968  ./stack-frag3-fwd.sh 
+ 1969  man zstd 
+ 1970  du -sh frag3-fwd/
+ 1971  du -sh frag3-fwd/*
+ 1972  du -sh frag3-fwd/
+ 1973  zstdmt --rm frag3-fwd/*.npy
+ 1974  df -h
+ 1975  code stack-frag3-bwd.sh 
+ 1976  time ./stack-frag3-bwd.sh 
+ 1977  zstdmt --rm frag3-bwd/*.npy 
+ 1978  python3 code/filter_identical_poses.py frag3-bwd/ frag3-fwd/ frag3-merged
+ 1979  df
+ 1980  time python3 code/filter_identical_poses.py frag3-bwd/ frag3-fwd/ frag3-merged
+ 1981  conda activate crocodile
+ 1982  ls /tmp/ -ld | less
+ 1983  cd /tmp/
+ 1984  ls /tmp/ -ld | less
+ 1985  cd 
+ 1986  conda activate crocodile
+ 1987  du -sh /tmp/pose_filter_yeiywpzq/
+ 1988  df
+ 1989  rm /tmp/pose_filter_yeiywpzq/ -rf
+ 1990  rm /tmp/poses_zst_wslv6kb3.npy 
+ 1991  ls
+ 1992  du -sh tests/1b7f/frag3-bwd/
+ 1993  du -sh tests/1b7f/frag3-fwd/
+ 1994  exit
+ 1995  exit
+ 1996  exit
+ 1997  conda activate crocodile
+ 1998  exit
+ 1999  conda activate crocodile
+ 2000  cd tests/
+ 2001  pytest -s test_library.py 
+ 2002  mkdir ../util
+ 2003  mv ../code/decode_rotamer_matrices.py ../util/
+ 2004  history >> ../WIP/saved_history.txt 
+ 2005  du --s ../WIP/* | sort -n
+ 2006  du -s ../WIP/* | sort -n
+ 2007  du -sh ../WIP/rotamer_matrix.npy 
+ 2008  du -sh ../WIP/poses*
+ 2009  ls -l ../WIP/poses*
+ 2010  git branch wip
+ 2011  git checkout wip
+ 2012  history >> HISTORY
+ 2013  history >> ../WIP/HISTORY 
