@@ -143,6 +143,8 @@ function usage()
         """
         Usage:
           filter_identical_poses.jl <set1> <set2> <output> [options]
+          
+          During canonicalization, significant files will be written in <output>/_tmp
 
         Options:
           --threshold-k <int>         Flush threshold for matched rows (default: 2000000)
@@ -857,6 +859,11 @@ end
 const RUNTIME_STAGE = Ref(:phase1)
 const RUNTIME_ZSTD_THREADS_PHASE1 = Ref{Int}(-1)
 const RUNTIME_ZSTD_THREADS_MAP = Ref{Int}(-1)
+
+function println_flush(args...)
+    println(args...)
+    flush(stdout)
+end
 
 function set_runtime_stage!(stage::Symbol)
     RUNTIME_STAGE[] = stage
@@ -2523,17 +2530,17 @@ function intersect_center_keys(
              load_center_keys_filtered(index_b, center, shared_confrot_mask::Vector{UInt64})
     isempty(keys_a) && return UInt64[]
     isempty(keys_b) && return UInt64[]
-    allow_inner_parallel && println("stage:mark unique-k-pass1-center-load-done")
+    allow_inner_parallel && println_flush("stage:mark unique-k-pass1-center-load-done")
     sort!(keys_a)
     sort!(keys_b)
     unique!(keys_a)
     unique!(keys_b)
     isempty(keys_a) && return UInt64[]
     isempty(keys_b) && return UInt64[]
-    allow_inner_parallel && println("stage:mark unique-k-pass1-center-sortuniq-done")
-    allow_inner_parallel && println("stage:mark unique-k-pass1-center-intersect-start")
+    allow_inner_parallel && println_flush("stage:mark unique-k-pass1-center-sortuniq-done")
+    allow_inner_parallel && println_flush("stage:mark unique-k-pass1-center-intersect-start")
     out = intersect_sorted_unique_serial(keys_a, keys_b)
-    allow_inner_parallel && println("stage:mark unique-k-pass1-center-intersect-done")
+    allow_inner_parallel && println_flush("stage:mark unique-k-pass1-center-intersect-done")
     return out
 end
 
@@ -2662,12 +2669,12 @@ function build_unique_k_and_lookup!(
     ncommon = length(common)
     confrot_shared_mask::Union{Nothing, Vector{UInt64}} = shared_confrot_mask_in
     if confrot_shared_mask !== nothing
-        println("stage:mark unique-k-confrot-prefilter-reuse")
+        println_flush("stage:mark unique-k-confrot-prefilter-reuse")
     else
-        println("stage:mark unique-k-confrot-prefilter-start")
+        println_flush("stage:mark unique-k-confrot-prefilter-start")
         confrot_shared_mask, uniq_confrot_a, shared_confrot = build_global_confrot_shared_mask(index_a, index_b)
-        println("unique-k confrot prefilter: unique-A=$uniq_confrot_a shared=$shared_confrot")
-        println("stage:mark unique-k-confrot-prefilter-end")
+        println_flush("unique-k confrot prefilter: unique-A=$uniq_confrot_a shared=$shared_confrot")
+        println_flush("stage:mark unique-k-confrot-prefilter-end")
     end
     lookup_paths = Dict{NTuple{3, Int16}, String}()
     inter_dir = joinpath(lookup_dir, "_intersections")
@@ -2708,10 +2715,10 @@ function build_unique_k_and_lookup!(
                         inter_counts[i] = UInt64(length(keys))
                     end
                     done = Threads.atomic_add!(progress_pass1, 1) + 1
-                    done == q25 && println("stage:mark unique-k-pass1-25")
-                    done == q50 && println("stage:mark unique-k-pass1-50")
-                    done == q75 && println("stage:mark unique-k-pass1-75")
-                    done == ncommon && println("stage:mark unique-k-pass1-100")
+                    done == q25 && println_flush("stage:mark unique-k-pass1-25")
+                    done == q50 && println_flush("stage:mark unique-k-pass1-50")
+                    done == q75 && println_flush("stage:mark unique-k-pass1-75")
+                    done == ncommon && println_flush("stage:mark unique-k-pass1-100")
                 end
             end
         end
@@ -2725,7 +2732,7 @@ function build_unique_k_and_lookup!(
         uid_next += inter_counts[i]
     end
     uid_next <= UInt64(typemax(UInt32)) + UInt64(1) || error("Unique-K index exceeds UInt32 range")
-    println("stage:mark unique-k-pass2-start")
+    println_flush("stage:mark unique-k-pass2-start")
 
     k_parts_dir = joinpath(lookup_dir, "_kparts")
     mkpath(k_parts_dir)
@@ -2784,16 +2791,16 @@ function build_unique_k_and_lookup!(
                         rm(inter_paths[i]; force = true)
                     end
                     done = Threads.atomic_add!(progress_pass2, 1) + 1
-                    done == q25_2 && println("stage:mark unique-k-pass2-25")
-                    done == q50_2 && println("stage:mark unique-k-pass2-50")
-                    done == q75_2 && println("stage:mark unique-k-pass2-75")
-                    done == ncommon && println("stage:mark unique-k-pass2-100")
+                    done == q25_2 && println_flush("stage:mark unique-k-pass2-25")
+                    done == q50_2 && println_flush("stage:mark unique-k-pass2-50")
+                    done == q75_2 && println_flush("stage:mark unique-k-pass2-75")
+                    done == ncommon && println_flush("stage:mark unique-k-pass2-100")
                 end
             end
         end
     end
     rm(inter_dir; recursive = true, force = true)
-    println("stage:mark unique-k-merge-start")
+    println_flush("stage:mark unique-k-merge-start")
 
     next_index = 1
     for i in 1:ncommon
@@ -3284,10 +3291,10 @@ function main(argv::Vector{String})::Int
     mkpath(tmp_a)
     mkpath(tmp_b)
 
-    println("A (largest): $large_name")
-    println("B (smallest): $small_name")
-    println("threads: $(nthreads())")
-    println("map workers: $(resolved_map_workers(cfg.map_workers))")
+    println_flush("A (largest): $large_name")
+    println_flush("B (smallest): $small_name")
+    println_flush("threads: $(nthreads())")
+    println_flush("map workers: $(resolved_map_workers(cfg.map_workers))")
     print_sizes = should_print_size_stats()
     set_runtime_zstd_overrides!(cfg.phase1_zstd_threads, cfg.map_zstd_threads)
     set_runtime_stage!(:phase1)
@@ -3303,13 +3310,13 @@ function main(argv::Vector{String})::Int
 
     if cfg.reuse_unique_k_dir === nothing
         prefilter_shared_mask::Union{Nothing, Vector{UInt64}} = nothing
-        println("stage:start confrot-prefilter")
+        println_flush("stage:start confrot-prefilter")
         t_stage = time()
         prefilter_shared_mask, uniq_confrot_a, shared_confrot = build_global_confrot_shared_mask_from_pairs(large_pairs, small_pairs)
-        println("confrot prefilter (pre-canonical): unique-A=$uniq_confrot_a shared=$shared_confrot")
-        println(@sprintf("stage:end confrot-prefilter %.3f", time() - t_stage))
+        println_flush("confrot prefilter (pre-canonical): unique-A=$uniq_confrot_a shared=$shared_confrot")
+        println_flush(@sprintf("stage:end confrot-prefilter %.3f", time() - t_stage))
 
-        println("stage:start canonicalization")
+        println_flush("stage:start canonicalization")
         t_stage = time()
         index_a = build_canonical_index!(large_pairs, tmp_a, prefilter_shared_mask)
         index_b = build_canonical_index!(small_pairs, tmp_b, prefilter_shared_mask)
@@ -3317,9 +3324,9 @@ function main(argv::Vector{String})::Int
         index_small = index_b
         post_confrot_a = post_confrot_row_count(index_a, prefilter_shared_mask !== nothing)
         post_confrot_b = post_confrot_row_count(index_b, prefilter_shared_mask !== nothing)
-        println(@sprintf("stage:end canonicalization %.3f", time() - t_stage))
-        println("A poses indexed (raw): $(index_a.total_poses), post-confrot kept: $post_confrot_a, temp rewrite (raw est): $(fmt_bytes(index_a.temp_bytes))")
-        println("B poses indexed (raw): $(index_b.total_poses), post-confrot kept: $post_confrot_b, temp rewrite (raw est): $(fmt_bytes(index_b.temp_bytes))")
+        println_flush(@sprintf("stage:end canonicalization %.3f", time() - t_stage))
+        println_flush("A poses indexed (raw): $(index_a.total_poses), post-confrot kept: $post_confrot_a, temp rewrite (raw est): $(fmt_bytes(index_a.temp_bytes))")
+        println_flush("B poses indexed (raw): $(index_b.total_poses), post-confrot kept: $post_confrot_b, temp rewrite (raw est): $(fmt_bytes(index_b.temp_bytes))")
         max_post_confrot = max(post_confrot_a, post_confrot_b)
         panic_if_over_limit(
             "post-confrot",
@@ -3328,10 +3335,10 @@ function main(argv::Vector{String})::Int
             cfg.max_poses_prefilter,
         )
         if print_sizes
-            println("tmp size after canonicalization: $(fmt_bytes(dir_size_bytes(tmp_root)))")
+            println_flush("tmp size after canonicalization: $(fmt_bytes(dir_size_bytes(tmp_root)))")
         end
 
-        println("stage:start unique-k")
+        println_flush("stage:start unique-k")
         t_stage = time()
         unique_k_count, lookup_paths = build_unique_k_and_lookup!(
             index_a,
@@ -3341,35 +3348,35 @@ function main(argv::Vector{String})::Int
             cfg,
             prefilter_shared_mask,
         )
-        println(@sprintf("stage:end unique-k %.3f", time() - t_stage))
+        println_flush(@sprintf("stage:end unique-k %.3f", time() - t_stage))
         total_rows_large = index_a.total_poses
         total_rows_small = index_b.total_poses
     else
         reuse_dir = cfg.reuse_unique_k_dir::String
         isdir(reuse_dir) || error("Unique-K directory not found: $reuse_dir")
-        println("reuse unique-K from: $reuse_dir")
+        println_flush("reuse unique-K from: $reuse_dir")
         reuse_pairs = discover_pose_pairs(reuse_dir)
-        println("stage:start reuse-unique-k-lookup")
+        println_flush("stage:start reuse-unique-k-lookup")
         t_stage = time()
         unique_k_count, lookup_paths = build_lookup_from_existing_unique_k!(reuse_pairs, lookup_dir)
-        println(@sprintf("stage:end reuse-unique-k-lookup %.3f", time() - t_stage))
-        println("stage:start reuse-map-prefilter")
+        println_flush(@sprintf("stage:end reuse-unique-k-lookup %.3f", time() - t_stage))
+        println_flush("stage:start reuse-map-prefilter")
         t_stage = time()
         reuse_mask, reuse_confrot_uniq = build_map_confrot_mask_from_lookup_paths(lookup_paths)
-        println("reuse map confrot mask size: $reuse_confrot_uniq")
-        println(@sprintf("stage:end reuse-map-prefilter %.3f", time() - t_stage))
+        println_flush("reuse map confrot mask size: $reuse_confrot_uniq")
+        println_flush(@sprintf("stage:end reuse-map-prefilter %.3f", time() - t_stage))
         map_prefilter_mask = reuse_mask
     end
 
     if cfg.stop_after_unique_k
-        println("stop-after-unique-k: skipping map-a/map-b")
-        println("unique-K rows: $unique_k_count")
-        println("done")
+        println_flush("stop-after-unique-k: skipping map-a/map-b")
+        println_flush("unique-K rows: $unique_k_count")
+        println_flush("done")
         if print_sizes
-            println("output size: $(fmt_bytes(dir_size_bytes(cfg.output)))")
+            println_flush("output size: $(fmt_bytes(dir_size_bytes(cfg.output)))")
         end
         if cfg.keep_temp
-            println("kept temp directory: $tmp_root")
+            println_flush("kept temp directory: $tmp_root")
         else
             rm(tmp_root; recursive = true, force = true)
         end
@@ -3388,9 +3395,9 @@ function main(argv::Vector{String})::Int
     matched_b_rows = UInt64(0)
     if cfg.reuse_unique_k_dir === nothing
         index_large !== nothing && index_small !== nothing || error("Internal error: canonical indexes missing for map stage")
-        println("stage:mark map-source canonical-index")
+        println_flush("stage:mark map-source canonical-index")
 
-        println("stage:start map-a")
+        println_flush("stage:start map-a")
         t_stage = time()
         matched_a_rows = map_index_to_lookup!(
             index_large::CanonicalSetIndex,
@@ -3401,9 +3408,9 @@ function main(argv::Vector{String})::Int
             total_poses = total_rows_large,
             map_workers = resolved_map_workers(cfg.map_workers),
         )
-        println(@sprintf("stage:end map-a %.3f", time() - t_stage))
+        println_flush(@sprintf("stage:end map-a %.3f", time() - t_stage))
 
-        println("stage:start map-b")
+        println_flush("stage:start map-b")
         t_stage = time()
         matched_b_rows = map_index_to_lookup!(
             index_small::CanonicalSetIndex,
@@ -3414,16 +3421,16 @@ function main(argv::Vector{String})::Int
             total_poses = total_rows_small,
             map_workers = resolved_map_workers(cfg.map_workers),
         )
-        println(@sprintf("stage:end map-b %.3f", time() - t_stage))
+        println_flush(@sprintf("stage:end map-b %.3f", time() - t_stage))
     else
         map_prefilter_mask !== nothing || error("Internal error: missing reuse map prefilter mask")
-        println("stage:start reuse-confrot-abs-lookup")
+        println_flush("stage:start reuse-confrot-abs-lookup")
         t_stage = time()
         confrot_abs_lookup = build_confrot_abs_lookup_from_lookup_paths(lookup_paths)
-        println(@sprintf("stage:end reuse-confrot-abs-lookup %.3f", time() - t_stage))
-        println("stage:mark map-source direct-abs-int16")
+        println_flush(@sprintf("stage:end reuse-confrot-abs-lookup %.3f", time() - t_stage))
+        println_flush("stage:mark map-source direct-abs-int16")
 
-        println("stage:start map-a")
+        println_flush("stage:start map-a")
         t_stage = time()
         matched_a_rows, total_rows_large = map_pairs_to_confrot_abs_lookup!(
             large_pairs,
@@ -3434,9 +3441,9 @@ function main(argv::Vector{String})::Int
             cfg;
             map_workers = resolved_map_workers(cfg.map_workers),
         )
-        println(@sprintf("stage:end map-a %.3f", time() - t_stage))
+        println_flush(@sprintf("stage:end map-a %.3f", time() - t_stage))
 
-        println("stage:start map-b")
+        println_flush("stage:start map-b")
         t_stage = time()
         matched_b_rows, total_rows_small = map_pairs_to_confrot_abs_lookup!(
             small_pairs,
@@ -3447,24 +3454,24 @@ function main(argv::Vector{String})::Int
             cfg;
             map_workers = resolved_map_workers(cfg.map_workers),
         )
-        println(@sprintf("stage:end map-b %.3f", time() - t_stage))
-        println("A rows scanned (raw): $total_rows_large")
-        println("B rows scanned (raw): $total_rows_small")
+        println_flush(@sprintf("stage:end map-b %.3f", time() - t_stage))
+        println_flush("A rows scanned (raw): $total_rows_large")
+        println_flush("B rows scanned (raw): $total_rows_small")
     end
 
-    println("matched A rows: $matched_a_rows")
-    println("matched B rows: $matched_b_rows")
-    println("unique-K rows: $unique_k_count")
+    println_flush("matched A rows: $matched_a_rows")
+    println_flush("matched B rows: $matched_b_rows")
+    println_flush("unique-K rows: $unique_k_count")
     if print_sizes
-        println("tmp size after matching: $(fmt_bytes(dir_size_bytes(tmp_root)))")
+        println_flush("tmp size after matching: $(fmt_bytes(dir_size_bytes(tmp_root)))")
     end
-    println("done")
+    println_flush("done")
     if print_sizes
-        println("output size: $(fmt_bytes(dir_size_bytes(cfg.output)))")
+        println_flush("output size: $(fmt_bytes(dir_size_bytes(cfg.output)))")
     end
 
     if cfg.keep_temp
-        println("kept temp directory: $tmp_root")
+        println_flush("kept temp directory: $tmp_root")
     else
         rm(tmp_root; recursive = true, force = true)
     end

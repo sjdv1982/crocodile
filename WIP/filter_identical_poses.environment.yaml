@@ -1,0 +1,9 @@
+name: filter-identical-poses
+channels:
+  - conda-forge
+dependencies:
+  - julia
+  - zstd
+variables:
+  JULIA_DEPOT_PATH: ""
+  JULIA_LOAD_PATH: ""
