@@ -16,6 +16,8 @@ points. For each bin, it filters sphere points with
 Use `expand_discrete_offsets` to materialize coordinates.
 """
 
+from __future__ import annotations
+
 import numpy as np
 
 _BOX_MIN = -19

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import io
 from collections import deque
 from pathlib import Path
@@ -755,6 +757,40 @@ def _pose_path_priority(path: Path) -> int:
     return 1 if path.name.endswith(_POSE_ZSTD_SUFFIX) else 0
 
 
+def _read_npy_header(fileobj) -> tuple[tuple[int, ...], bool, np.dtype]:
+    version = np.lib.format.read_magic(fileobj)
+    if version == (1, 0):
+        shape, fortran_order, dtype = np.lib.format.read_array_header_1_0(fileobj)
+    elif version == (2, 0):
+        shape, fortran_order, dtype = np.lib.format.read_array_header_2_0(fileobj)
+    elif version == (3, 0) and hasattr(np.lib.format, "read_array_header_3_0"):
+        shape, fortran_order, dtype = np.lib.format.read_array_header_3_0(fileobj)
+    else:
+        raise ValueError(f"Unsupported .npy version {version}")
+    return shape, fortran_order, dtype
+
+
+def pose_array_shape(path: str | Path) -> tuple[int, ...]:
+    path = Path(path)
+    if _is_compressed_pose_name(path.name):
+        zstd = _require_zstandard("read")
+        with path.open("rb") as compressed:
+            with zstd.ZstdDecompressor().stream_reader(compressed) as reader:
+                shape, _, _ = _read_npy_header(reader)
+        return shape
+
+    with path.open("rb") as handle:
+        shape, _, _ = _read_npy_header(handle)
+    return shape
+
+
+def pose_array_length(path: str | Path) -> int:
+    shape = pose_array_shape(path)
+    if len(shape) == 0:
+        raise ValueError(f"Scalar array has no length: {path}")
+    return int(shape[0])
+
+
 def pose_index_from_name(name: str) -> int | None:
     if name.endswith(_POSE_ZSTD_SUFFIX):
         base = name[: -len(".zst")]
@@ -804,6 +840,13 @@ def discover_pose_pairs(directory: str | Path) -> list[tuple[Path, Path]]:
             raise FileNotFoundError(f"Missing {offsets_path} for {pose_path}")
         pairs.append((pose_path, offsets_path))
     return pairs
+
+
+def discover_pose_pairs_with_counts(directory: str | Path) -> list[tuple[Path, Path, int]]:
+    pairs_with_counts: list[tuple[Path, Path, int]] = []
+    for pose_path, offsets_path in discover_pose_pairs(directory):
+        pairs_with_counts.append((pose_path, offsets_path, pose_array_length(pose_path)))
+    return pairs_with_counts
 
 
 def open_pose_array(path: str | Path) -> np.ndarray:

@@ -12,6 +12,8 @@ from pose_test_data import generate_pose_test_data
 from poses import (
     PoseStreamAccumulator,
     pack_all_poses,
+    pose_array_length,
+    pose_array_shape,
     read_pose_files,
     unpack_poses,
     write_pose_files,
@@ -171,3 +173,26 @@ def test_pose_stream_accumulator_zstd_roundtrip():
     assert np.array_equal(rot2, rot_expanded)
     reconstructed = offset_table[off_idx2.astype(np.int64)]
     assert np.array_equal(reconstructed, tdata)
+
+
+def test_pose_array_metadata_supports_npy_and_zstd():
+    conf = np.array([1, 2], dtype=np.uint16)
+    rot = np.array([3, 4], dtype=np.uint16)
+    trans = np.array([[0, 0, 0], [1, 2, 3]], dtype=np.int16)
+
+    with tempfile.TemporaryDirectory(prefix="pose_meta_plain_") as plain_dir:
+        writer = PoseStreamAccumulator(plain_dir)
+        writer.add_chunk(conf, rot, trans)
+        written = writer.finish()
+        plain_path, _ = written[0]
+        assert pose_array_shape(plain_path) == (2, 3)
+        assert pose_array_length(plain_path) == 2
+
+    with tempfile.TemporaryDirectory(prefix="pose_meta_zstd_") as zstd_dir:
+        writer = PoseStreamAccumulator(zstd_dir, zstd=True)
+        writer.add_chunk(conf, rot, trans)
+        written = writer.finish()
+        zstd_path, _ = written[0]
+        assert zstd_path.name.endswith(".npy.zst")
+        assert pose_array_shape(zstd_path) == (2, 3)
+        assert pose_array_length(zstd_path) == 2
