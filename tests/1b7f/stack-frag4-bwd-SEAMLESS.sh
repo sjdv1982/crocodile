@@ -12,7 +12,7 @@ seamless-run -vvv -y --conda alaric --dry --write-remote-job "$deploymentdir" \
 """python -u code/stack.py --sequence GU --protein pdbs/1b7f_dom2.pdb \
   --pdb-exclude 1b7f \
   --resid 256 --second \
-  --angle 30 --dihedral 45 -45 \
+  --angle 25 --dihedral 45 -45 \
   --output \$outdir/files \
   && seamless-checksum-index /ramscratch/$output/files && \
   mkdir /ramscratch/$output/bufferdir
