@@ -1,4 +1,4 @@
 - project: sandbox
 - execution: remote
-- cluster: local
+- cluster: mbi-deploy
 - remote: jobserver

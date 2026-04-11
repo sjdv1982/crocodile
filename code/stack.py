@@ -15,34 +15,17 @@ from offsets import get_discrete_offsets
 from parse_pdb import parse_pdb
 from poses import PoseStreamAccumulator
 from rna_pdb import ppdb2nucseq
+from stack_geometry import (
+    RINGS,
+    as_coordinates,
+    calc_plane,
+    protein_ring_coordinates,
+    residue_ring_atom_mask,
+)
 
 
 GRID_SPACING = sqrt(3) / 3
 LATERAL_SLOPE = 1.78966
-
-RINGS = {
-    "T": ["C6", "C5", "C7", "N3", "O2", "O4"],
-    "U": ["N1", "C2", "N3", "C4", "C5", "C6"],
-    "C": ["N1", "C2", "N3", "C4", "C5", "C6"],
-    "G": ["N1", "C2", "N3", "C4", "C5", "C6", "N7", "C8", "N9"],
-    "A": ["N1", "C2", "N3", "C4", "C5", "C6", "N7", "C8", "N9"],
-    "PHE": ["CG", "CD1", "CD2", "CE1", "CE2", "CZ"],
-    "TYR": ["CG", "CD1", "CD2", "CE1", "CE2", "CZ"],
-    "HIS": ["CG", "ND1", "CD2", "CE1", "NE2"],
-    "ARG": ["CD", "NE", "CZ", "NH1", "NH2"],
-    "TRP": ["CG", "CD1", "CD2", "NE1", "CE2", "CE3", "CZ2", "CZ3", "CH2"],
-}
-for left, right in (
-    ("DT", "T"),
-    ("RU", "U"),
-    ("DC", "C"),
-    ("RC", "C"),
-    ("DG", "G"),
-    ("RG", "G"),
-    ("DA", "A"),
-    ("RA", "A"),
-):
-    RINGS[left] = RINGS[right]
 
 
 def _existing_file(path: str) -> str:
@@ -75,7 +58,9 @@ def _dinucleotide_sequence(seq: str) -> str:
 
 def _dihedral_pair(values: Sequence[str]) -> tuple[float, float]:
     if len(values) != 2:
-        raise argparse.ArgumentTypeError("--dihedral requires 2 floats: MIN MAX")
+        raise argparse.ArgumentTypeError(
+            "--dihedral requires 2 floats: MIN MAX or MAX MIN"
+        )
     try:
         a = float(values[0])
         b = float(values[1])
@@ -117,8 +102,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--dihedral",
         nargs=2,
         metavar=("MIN_DEG", "MAX_DEG"),
-        required=True,
-        help="Minimum and maximum dihedral angle in degrees.",
+        required=False,
+        help="""Minimum and maximum dihedral angle in degrees.
+If the maximum is smaller than the minimum, only the tails are kept, 
+and the values in between are eliminated.""",
     )
     parser.add_argument(
         "--angle",
@@ -191,19 +178,6 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _as_coordinates(mol: np.ndarray) -> np.ndarray:
-    return np.stack((mol["x"], mol["y"], mol["z"]), axis=-1)
-
-
-def _calc_plane(coordinates: np.ndarray) -> np.ndarray:
-    centered = coordinates - coordinates.mean(axis=0)
-    _, _, wt = np.linalg.svd(centered.T.dot(centered))
-    plane_directionless = wt[2] / np.linalg.norm(wt[2])
-    plane0_directed = np.cross((centered[1] - centered[0]), (centered[2] - centered[1]))
-    flip = np.sign(np.dot(plane_directionless, plane0_directed))
-    return plane_directionless * flip
-
-
 def _calc_planes(coordinates: np.ndarray) -> np.ndarray:
     centered = coordinates - coordinates.mean(axis=1)[:, None, :]
     covar = np.einsum("ijk,ijl->ikl", centered, centered)
@@ -216,39 +190,6 @@ def _calc_planes(coordinates: np.ndarray) -> np.ndarray:
     )
     flip = np.sign(np.einsum("ij,ij->i", directionless, directed))
     return directionless * flip[:, None]
-
-
-def _protein_ring_coordinates(protein_atoms: np.ndarray, resid: int) -> np.ndarray:
-    mask_resid = protein_atoms["resid"] == resid
-    if not np.any(mask_resid):
-        raise ValueError(f"Residue {resid} was not found in protein")
-
-    chains = np.unique(protein_atoms["chain"][mask_resid])
-    if len(chains) != 1:
-        chains_str = ", ".join(
-            ch.decode(errors="ignore").strip() or "<blank>" for ch in chains
-        )
-        raise ValueError(
-            f"Residue ID {resid} is ambiguous across chains ({chains_str}); select a unique residue ID"
-        )
-
-    resnames = np.unique(protein_atoms["resname"][mask_resid])
-    if len(resnames) != 1:
-        raise ValueError(f"Residue {resid} resolves to multiple residue names")
-    resname = resnames[0].decode()
-    if resname not in RINGS:
-        raise ValueError(
-            f"Residue {resid} ({resname}) is not aromatic or unsupported; expected one of {sorted(RINGS)}"
-        )
-
-    ring_names = [name.encode() for name in RINGS[resname]]
-    mask_ring = mask_resid & np.isin(protein_atoms["name"], ring_names)
-    if not np.any(mask_ring):
-        raise ValueError(f"Could not find ring atoms for residue {resid} ({resname})")
-    coordinates = _as_coordinates(protein_atoms[mask_ring])
-    if len(coordinates) < 3:
-        raise ValueError(f"Residue {resid} has too few ring atoms ({len(coordinates)})")
-    return coordinates
 
 
 def _select_library(
@@ -294,16 +235,10 @@ def _select_library(
 
     nucleotide_index = 0 if first else 1
     atom_start, atom_end = nucleotide_indices[nucleotide_index]
-    residue_name = template[atom_start]["resname"].decode()
-    if residue_name not in RINGS:
-        raise ValueError(f"Unsupported nucleobase residue {residue_name}")
-    ring_names = [name.encode() for name in RINGS[residue_name]]
+    residue_ring_mask, _ = residue_ring_atom_mask(template[atom_start:atom_end])
 
     ring_mask_full = np.zeros(len(template), dtype=bool)
-    ring_mask_full[atom_start:atom_end] = np.isin(
-        template[atom_start:atom_end]["name"],
-        ring_names,
-    )
+    ring_mask_full[atom_start:atom_end] = residue_ring_mask
     if library.atom_mask is not None:
         ring_mask = ring_mask_full[library.atom_mask]
     else:
@@ -348,11 +283,12 @@ def _dihedral_filter(
     angles: np.ndarray,
     dihedral: np.ndarray,
     max_angle_deg: float,
-    dihedral_min_deg: float,
-    dihedral_max_deg: float,
+    dihedral_min_deg: float | None,
+    dihedral_max_deg: float | None,
 ) -> np.ndarray:
     mask = angles <= max_angle_deg / 180.0 * np.pi
-    if abs(dihedral_min_deg) > 0.0001 and abs(dihedral_max_deg) > 0.0001:
+    if dihedral_min_deg is not None:
+        assert dihedral_max_deg is not None
         dihedral_min = dihedral_min_deg / 180.0 * np.pi
         dihedral_max = dihedral_max_deg / 180.0 * np.pi
         if dihedral_max < dihedral_min:
@@ -364,7 +300,9 @@ def _dihedral_filter(
 
 
 def _run(args: argparse.Namespace) -> int:
-    dihedral_min_deg, dihedral_max_deg = _dihedral_pair(args.dihedral)
+    dihedral_min_deg, dihedral_max_deg = None, None
+    if args.dihedral is not None:
+        dihedral_min_deg, dihedral_max_deg = _dihedral_pair(args.dihedral)
     if args.margin < 0:
         raise ValueError("--margin must be non-negative")
     if args.max_poses_per_chunk <= 0:
@@ -379,9 +317,9 @@ def _run(args: argparse.Namespace) -> int:
     if np.any(protein_atoms["model"] == 1):
         protein_atoms = protein_atoms[protein_atoms["model"] == 1]
 
-    protein_ring = _protein_ring_coordinates(protein_atoms, args.resid)
+    protein_ring = protein_ring_coordinates(protein_atoms, args.resid)
     protein_center = protein_ring.mean(axis=0)
-    protein_plane = _calc_plane(protein_ring)
+    protein_plane = calc_plane(protein_ring)
     protein_x = protein_ring[0] - protein_center
     protein_x /= np.linalg.norm(protein_x)
     protein_y = np.cross(protein_plane, protein_x)
@@ -474,7 +412,7 @@ def _run(args: argparse.Namespace) -> int:
 
             rotamer_matrices = _rotamers_to_matrices(rotamer_block)
             base_center = ring_coordinates.mean(axis=0)
-            base_plane = _calc_plane(ring_coordinates)
+            base_plane = calc_plane(ring_coordinates)
             base_x = ring_coordinates[0] - base_center
             ring_planes = base_plane @ rotamer_matrices
 

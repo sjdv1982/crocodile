@@ -1,4 +1,5 @@
 stack.py
+stack_geometry.py
 library.py
 offsets.py
 parse_pdb.py

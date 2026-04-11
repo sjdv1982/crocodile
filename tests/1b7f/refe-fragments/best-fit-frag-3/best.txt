@@ -1,0 +1,7 @@
+Wrote tests/1b7f/refe-fragments/best-fit-frag-3/poses-1.npy and tests/1b7f/refe-fragments/best-fit-frag-3/offsets-1.dat
+conformer=2884
+rotamer=4301
+translation_grid=62 96 177
+kabsch_rmsd=0.828072
+centered_rmsd=0.889055
+final_rmsd=0.901405
