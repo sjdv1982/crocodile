@@ -149,12 +149,20 @@ and the values in between are eliminated.""",
         default=0,
         help="Random seed for test options (default: 0).",
     )
-    parser.add_argument(
+    conformer_group = parser.add_mutually_exclusive_group()
+    conformer_group.add_argument(
         "--test-conformers",
         type=int,
         default=None,
         metavar="N",
         help="If set, reduce the conformer library to N elements selected at random.",
+    )
+    conformer_group.add_argument(
+        "--conformer",
+        type=int,
+        default=None,
+        metavar="INDEX",
+        help="Restrict the search to a single 0-based conformer index.",
     )
     parser.add_argument(
         "--test-rotamers",
@@ -269,8 +277,26 @@ def _rotamers_to_matrices(rotamers: np.ndarray) -> np.ndarray:
 
 
 def _select_conformers(
-    available_indices: np.ndarray, count: int | None, seed: int
+    conformer_mask: np.ndarray,
+    count: int | None,
+    seed: int,
+    specific_index: int | None,
 ) -> np.ndarray:
+    available_indices = np.nonzero(conformer_mask)[0]
+    if len(available_indices) == 0:
+        raise ValueError("No conformers available after exclusions")
+    if specific_index is not None:
+        if specific_index < 0:
+            raise ValueError("--conformer must be non-negative")
+        if specific_index >= len(conformer_mask):
+            raise ValueError(
+                f"--conformer index {specific_index} out of range for library of size {len(conformer_mask)}"
+            )
+        if not conformer_mask[specific_index]:
+            raise ValueError(
+                f"--conformer index {specific_index} is not available after exclusions"
+            )
+        return np.array([specific_index], dtype=available_indices.dtype)
     if count is None or count >= len(available_indices):
         return available_indices.copy()
     if count <= 0:
@@ -334,11 +360,11 @@ def _run(args: argparse.Namespace) -> int:
         )
     )
 
-    available = np.nonzero(conformer_mask)[0]
-    if len(available) == 0:
-        raise ValueError("No conformers available after exclusions")
     selected_conformers = _select_conformers(
-        available, args.test_conformers, args.test_seed
+        conformer_mask,
+        args.test_conformers,
+        args.test_seed,
+        args.conformer,
     )
     print(
         f"[3/7] Filtering angle/dihedral for {len(selected_conformers)} conformers...",
