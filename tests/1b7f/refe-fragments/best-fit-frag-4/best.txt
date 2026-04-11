@@ -1,4 +1,4 @@
-Wrote tests/1b7f/refe-fragments/best-fit-frag-4/poses-1.npy and tests/1b7f/refe-fragments/best-fit-frag-4/offsets-1.dat
+Wrote refe-fragments/best-fit-frag-4/poses-1.npy and refe-fragments/best-fit-frag-4/offsets-1.dat
 conformer=1975
 rotamer=11295
 translation_grid=56 98 169
