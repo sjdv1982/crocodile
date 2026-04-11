@@ -17,6 +17,7 @@ struct CliConfig
     max_poses_per_chunk::Int
     dedup_buckets::Int
     keep_temp::Bool
+    reuse_canonical_tmp::Union{Nothing, String}
     reuse_unique_k_dir::Union{Nothing, String}
     stop_after_unique_k::Bool
     phase1_zstd_threads::Union{Nothing, Int}
@@ -152,6 +153,7 @@ function usage()
           --max-poses-per-chunk <int> Maximum poses per output poses-*.npy chunk (default: 4294967295)
           --dedup-buckets <int>       Power-of-two bucket count for K uniqueness (default: 256)
           --keep-temp                 Keep temporary files under <output>/_tmp for inspection
+          --reuse-canonical-tmp <dir> Reuse existing canonical temp dirs from <dir> or <dir>/_tmp
           --reuse-unique-k-dir <dir>  Skip prefilter/canonicalization/unique-k and reuse existing unique-K poses
           --stop-after-unique-k       Stop after writing unique-K poses (skip map-a/map-b)
           --phase1-zstd-threads <n>   zstd threads for prefilter/canonicalization/unique-k (default: CROCODILE_ZSTD_THREADS)
@@ -183,6 +185,7 @@ function parse_args(argv::Vector{String})::CliConfig
     max_poses_per_chunk = Int(typemax(UInt32))
     dedup_buckets = 256
     keep_temp = false
+    reuse_canonical_tmp = nothing
     reuse_unique_k_dir = nothing
     stop_after_unique_k = false
     phase1_zstd_threads = nothing
@@ -217,6 +220,11 @@ function parse_args(argv::Vector{String})::CliConfig
         elseif arg == "--keep-temp"
             keep_temp = true
             i += 1
+            continue
+        elseif arg == "--reuse-canonical-tmp"
+            i + 1 <= length(argv) || error("--reuse-canonical-tmp requires a value")
+            reuse_canonical_tmp = argv[i + 1]
+            i += 2
             continue
         elseif arg == "--reuse-unique-k-dir"
             i + 1 <= length(argv) || error("--reuse-unique-k-dir requires a value")
@@ -288,6 +296,7 @@ function parse_args(argv::Vector{String})::CliConfig
         max_poses_per_chunk,
         dedup_buckets,
         keep_temp,
+        reuse_canonical_tmp,
         reuse_unique_k_dir,
         stop_after_unique_k,
         phase1_zstd_threads,
@@ -1041,6 +1050,75 @@ function discover_pose_pairs(dir::String)::Vector{PairInfo}
         push!(out, PairInfo(idx, pose_path, offset_path, sz))
     end
     return out
+end
+
+function maybe_discover_pose_pairs(dir::String)::Vector{PairInfo}
+    isdir(dir) || return PairInfo[]
+    for name in readdir(dir)
+        startswith(name, "poses-") || continue
+        return discover_pose_pairs(dir)
+    end
+    return PairInfo[]
+end
+
+function parse_center_from_bucket_filename(path::String)::Union{Nothing, NTuple{3, Int16}}
+    name = basename(path)
+    m = match(r"^(?:t\d+-)?center-(-?\d+)-(-?\d+)-(-?\d+)\.bin(?:-idx64)?(?:\.zst)?$", name)
+    m === nothing && return nothing
+    x = parse(Int, m.captures[1])
+    y = parse(Int, m.captures[2])
+    z = parse(Int, m.captures[3])
+    return (Int16(x), Int16(y), Int16(z))
+end
+
+function resolve_canonical_tmp_dirs(root::String)::Tuple{String, String}
+    isdir(root) || error("Canonical temp root not found: $root")
+    direct_a = joinpath(root, "set-a-reorg")
+    direct_b = joinpath(root, "set-b-reorg")
+    nested_a = joinpath(root, "_tmp", "set-a-reorg")
+    nested_b = joinpath(root, "_tmp", "set-b-reorg")
+    if isdir(direct_a) && isdir(direct_b)
+        return direct_a, direct_b
+    elseif isdir(nested_a) && isdir(nested_b)
+        return nested_a, nested_b
+    end
+    error("Expected set-a-reorg and set-b-reorg under $root or $root/_tmp")
+end
+
+function load_canonical_index_from_tmpdir(
+    tmpdir::String,
+    total_rows::UInt64,
+)::CanonicalSetIndex
+    isdir(tmpdir) || error("Canonical temp directory not found: $tmpdir")
+    index = init_canonical_set_index()
+    index.total_poses = total_rows
+
+    for pair in maybe_discover_pose_pairs(tmpdir)
+        center = read_offset_center(pair.offset_path)
+        refs = get!(index.pairs_by_center, center, PairWithStart[])
+        push!(refs, PairWithStart(pair))
+    end
+
+    for name in readdir(tmpdir)
+        path = joinpath(tmpdir, name)
+        isfile(path) || continue
+        center = parse_center_from_bucket_filename(path)
+        center === nothing && continue
+        if occursin("-idx64", name)
+            paths = get!(index.map_bucket_by_center, center, String[])
+            push!(paths, path)
+        elseif !startswith(name, "poses-") && !startswith(name, "offsets-")
+            paths = get!(index.bucket_by_center, center, String[])
+            push!(paths, path)
+        end
+    end
+
+    isempty(index.bucket_by_center) && isempty(index.map_bucket_by_center) &&
+        error("No canonical bucket files found in $tmpdir")
+    isempty(index.map_bucket_by_center) &&
+        error("No canonical map bucket files found in $tmpdir; cannot resume map stage from this temp dir")
+
+    return index
 end
 
 function load_offsets_dat(path::String)
@@ -2606,7 +2684,7 @@ function write_center_lookup_and_k_parallel!(
 )
     n = length(keys)
     chunk_rows = CENTER_INNER_PASS2_CHUNK_ROWS
-    nchunks = min(Threads.nthreads(), max(2, cld(n, chunk_rows)))
+    nchunks = cld(n, chunk_rows)
     sub_dirs = fill("", nchunks)
     sub_lookup_paths = fill("", nchunks)
 
@@ -3266,6 +3344,8 @@ end
 
 function main(argv::Vector{String})::Int
     cfg = parse_args(argv)
+    cfg.reuse_canonical_tmp !== nothing && cfg.reuse_unique_k_dir !== nothing &&
+        error("--reuse-canonical-tmp cannot be combined with --reuse-unique-k-dir")
     cfg.reuse_unique_k_dir !== nothing && cfg.stop_after_unique_k &&
         error("--stop-after-unique-k cannot be combined with --reuse-unique-k-dir")
     isdir(cfg.set1) || error("Input directory not found: $(cfg.set1)")
@@ -3308,7 +3388,29 @@ function main(argv::Vector{String})::Int
     index_large::Union{Nothing, CanonicalSetIndex} = nothing
     index_small::Union{Nothing, CanonicalSetIndex} = nothing
 
-    if cfg.reuse_unique_k_dir === nothing
+    if cfg.reuse_canonical_tmp !== nothing
+        total_rows_large = sum_pose_rows(large_pairs)
+        total_rows_small = sum_pose_rows(small_pairs)
+        reuse_a, reuse_b = resolve_canonical_tmp_dirs(cfg.reuse_canonical_tmp::String)
+        println_flush("reuse canonical tmp A from: $reuse_a")
+        println_flush("reuse canonical tmp B from: $reuse_b")
+        println_flush("stage:start reuse-canonical-index")
+        t_stage = time()
+        index_large = load_canonical_index_from_tmpdir(reuse_a, total_rows_large)
+        index_small = load_canonical_index_from_tmpdir(reuse_b, total_rows_small)
+        println_flush(@sprintf("stage:end reuse-canonical-index %.3f", time() - t_stage))
+
+        println_flush("stage:start unique-k")
+        t_stage = time()
+        unique_k_count, lookup_paths = build_unique_k_and_lookup!(
+            index_large::CanonicalSetIndex,
+            index_small::CanonicalSetIndex,
+            cfg.output,
+            lookup_dir,
+            cfg,
+        )
+        println_flush(@sprintf("stage:end unique-k %.3f", time() - t_stage))
+    elseif cfg.reuse_unique_k_dir === nothing
         prefilter_shared_mask::Union{Nothing, Vector{UInt64}} = nothing
         println_flush("stage:start confrot-prefilter")
         t_stage = time()

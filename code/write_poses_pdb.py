@@ -76,12 +76,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--first-index",
         type=_positive_int,
-        help="First inclusive shard index when using --pose-dir",
+        help="First inclusive pose index (counting from 1)",
     )
     parser.add_argument(
         "--last-index",
         type=_positive_int,
-        help="Last inclusive shard index when using --pose-dir",
+        help="Last inclusive pose index (counting from 1)",
     )
     parser.add_argument(
         "--sequence",
@@ -119,19 +119,10 @@ def _rotamers_to_matrices(rotamers: np.ndarray) -> np.ndarray:
 
 
 def _select_pairs(args: argparse.Namespace) -> list[tuple[Path, Path]]:
-    first_index = args.first_index
-    last_index = args.last_index
-    if first_index is not None and last_index is not None and first_index > last_index:
-        raise ValueError("--first-index must be <= --last-index")
-
     pairs: list[tuple[Path, Path]] = []
     for pose_path, offsets_path in discover_pose_pairs(args.pose_dir):
         index = pose_index_from_name(pose_path.name)
         if index is None:
-            continue
-        if first_index is not None and index < first_index:
-            continue
-        if last_index is not None and index > last_index:
             continue
         pairs.append((pose_path, offsets_path))
 
@@ -144,8 +135,6 @@ def _count_total_poses(pairs: list[tuple[Path, Path]]) -> int:
     total = 0
     for pose_path, _ in pairs:
         total += pose_array_length(pose_path)
-        if total > MAX_MODELS:
-            raise ValueError(f"Refusing to write more than {MAX_MODELS} models to PDB")
     return total
 
 
@@ -242,8 +231,20 @@ def write_pose_pairs_to_pdb(
     output_path: Path,
     verify_checksums: bool,
     excluded_pdb_codes: set[str],
+    first_index: int | None,
+    last_index: int | None,
 ) -> int:
     total_poses = _count_total_poses(pairs)
+    if first_index is not None or last_index is not None:
+        if last_index is None or first_index is None or first_index > last_index:
+            raise ValueError("--first-index must be <= --last-index")
+
+        first_index = min(first_index, total_poses)
+        last_index = min(last_index, total_poses)
+        total_poses = last_index - first_index + 1
+    if total_poses > MAX_MODELS:
+        raise ValueError(f"Refusing to write more than {MAX_MODELS} models to PDB")
+
     lib = _load_library(
         sequence,
         verify_checksums=verify_checksums,
@@ -257,10 +258,13 @@ def write_pose_pairs_to_pdb(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w") as handle:
+        all_poses = []
         for poses_path, offsets_path in pairs:
             poses = np.asarray(open_pose_array(poses_path), dtype=np.uint16)
             if poses.ndim != 2 or poses.shape[1] != 3:
-                raise ValueError(f"Invalid pose array shape in {poses_path}: {poses.shape}")
+                raise ValueError(
+                    f"Invalid pose array shape in {poses_path}: {poses.shape}"
+                )
             offset_table = load_offset_table(offsets_path)
 
             for pose_number, (conf_u16, rot_u16, offset_u16) in enumerate(poses):
@@ -291,15 +295,21 @@ def write_pose_pairs_to_pdb(
                     offset_table[offset_index].astype(np.float32, copy=False)
                     * GRID_SPACING
                 )
-                atoms = _transform_pose_atoms(
-                    template=template,
-                    coordinates=coordinates[conf],
-                    rotation=rotations[rot],
-                    translation=translation,
-                    model_index=model_index,
-                )
-                _write_model(handle, atoms, model_index)
-                model_index += 1
+                all_poses.append((conf, rotations[rot], translation))
+
+        if first_index is not None:
+            assert last_index is not None
+            all_poses = all_poses[first_index - 1 : last_index]
+        for conf, rotation, translation in all_poses:
+            atoms = _transform_pose_atoms(
+                template=template,
+                coordinates=coordinates[conf],
+                rotation=rotation,
+                translation=translation,
+                model_index=model_index,
+            )
+            _write_model(handle, atoms, model_index)
+            model_index += 1
 
     assert model_index - 1 == total_poses
     return total_poses
@@ -309,12 +319,16 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
     pairs = _select_pairs(args)
+    first_index = args.first_index
+    last_index = args.last_index
     total = write_pose_pairs_to_pdb(
         pairs=pairs,
         sequence=args.sequence,
         output_path=Path(args.output),
         verify_checksums=args.verify_checksums,
         excluded_pdb_codes=set(args.pdb_exclude),
+        first_index=first_index,
+        last_index=last_index,
     )
     print(f"Wrote {total} models to {args.output}")
 
