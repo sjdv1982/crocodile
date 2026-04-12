@@ -414,23 +414,13 @@ class LibraryFactory:
         ):
             raise RuntimeError("Rotaconformers must be loaded first")
 
-        pdb_codes: Optional[set[str]] = None
-        if pdb_code is not None:
-            if isinstance(pdb_code, str):
-                pdb_codes = {pdb_code.lower()}
-            elif isinstance(pdb_code, (list, tuple, set)):
-                pdb_codes = {str(code).lower() for code in pdb_code}
-            else:
-                raise TypeError("pdb_code must be a string or a list/tuple/set of strings")
-            if not pdb_codes:
-                pdb_codes = None
+        pdb_codes = _normalise_pdb_codes(pdb_code)
 
         primary_coordinates = self.primary_coordinates
         if pdb_codes is not None and self.replacement_origins is not None:
-            to_replace = []
-            for confnr, ori in enumerate(self.replacement_origins):
-                if ori in pdb_codes:
-                    to_replace.append(confnr)
+            to_replace = _origin_indices_for_pdb_codes(
+                self.replacement_origins, pdb_codes
+            )
             if to_replace:
                 assert self.replacement_coordinates is not None
                 primary_coordinates = primary_coordinates.copy()
@@ -442,10 +432,9 @@ class LibraryFactory:
         if self.extension_coordinates is not None:
             extension_coordinates = self.extension_coordinates
             if pdb_codes is not None and self.extension_origins is not None:
-                to_replace = []
-                for confnr, ori in enumerate(self.extension_origins):
-                    if ori in pdb_codes:
-                        to_replace.append(confnr)
+                to_replace = _origin_indices_for_pdb_codes(
+                    self.extension_origins, pdb_codes
+                )
                 if to_replace:
                     offset = len(primary_coordinates)
                     mask = np.zeros(len(extension_coordinates), bool)
@@ -611,13 +600,11 @@ class LibraryDirectory:
             raise ValueError(
                 f"Template contains sequence {template_sequence}, whereas {sequence} is specified"
             )
-        x = "X" * self.fraglen
-        baseUT = "U" if self.rna else "T"
-        seq0 = sequence.replace("G", "A").replace(baseUT, "C")
+        seq0 = _representative_sequence(sequence, rna=self.rna)
         if loaded_libraries is not None and seq0 in loaded_libraries:
             primary_coordinates0 = loaded_libraries[seq0].primary_coordinates
         else:
-            primary_coordinates0 = np.load(self.filepattern.replace(x, seq0))
+            primary_coordinates0 = np.load(_sequence_path(self.filepattern, seq0))
         primary_coordinates = mutate(primary_coordinates0, seq0, sequence)
         extension_coordinates = None
         if with_extension:
@@ -626,7 +613,7 @@ class LibraryDirectory:
             else:
                 assert self.extension_filepattern is not None
                 extension_coordinates0 = np.load(
-                    self.extension_filepattern.replace(x, seq0)
+                    _sequence_path(self.extension_filepattern, seq0)
                 )
             assert extension_coordinates0 is not None
             extension_coordinates = mutate(extension_coordinates0, seq0, sequence)
@@ -636,7 +623,7 @@ class LibraryDirectory:
         if with_replacement:
             assert self.replacement_filepattern is not None
             replacement_coordinates0 = np.load(
-                self.replacement_filepattern.replace(x, seq0)
+                _sequence_path(self.replacement_filepattern, seq0)
             )
             if len(replacement_coordinates0) != len(primary_coordinates):
                 raise ValueError(
@@ -644,7 +631,7 @@ class LibraryDirectory:
                 )
             replacement_coordinates = mutate(replacement_coordinates0, seq0, sequence)
             assert self.replacement_origin_filepattern is not None
-            with open(self.replacement_origin_filepattern.replace(x, seq0)) as f:
+            with open(_sequence_path(self.replacement_origin_filepattern, seq0)) as f:
                 replacement_origins0 = f.read()
             replacement_origins = [
                 l.split()[0] for l in replacement_origins0.splitlines()[1:]
@@ -655,7 +642,7 @@ class LibraryDirectory:
                 )
             if with_extension:
                 assert self.extension_origin_filepattern is not None
-                with open(self.extension_origin_filepattern.replace(x, seq0)) as f:
+                with open(_sequence_path(self.extension_origin_filepattern, seq0)) as f:
                     extension_origins0 = f.read()
                 extension_origins = [l.strip() for l in extension_origins0.splitlines()]
             if extension_origins is not None and extension_coordinates is not None:
@@ -674,22 +661,24 @@ class LibraryDirectory:
         rotaconformers_extension_index_file = None
         if with_rotaconformers:
             assert self.rotaconformers_filepattern is not None
-            rotaconformers_file = self.rotaconformers_filepattern.replace(x, seq0)
+            rotaconformers_file = _sequence_path(self.rotaconformers_filepattern, seq0)
             assert os.path.exists(rotaconformers_file)
             assert self.rotaconformers_index_filepattern is not None
-            rotaconformers_index_file = self.rotaconformers_index_filepattern.replace(
-                x, seq0
+            rotaconformers_index_file = _sequence_path(
+                self.rotaconformers_index_filepattern, seq0
             )
             assert os.path.exists(rotaconformers_index_file)
             if with_extension:
                 assert self.rotaconformers_extension_filepattern is not None
                 rotaconformers_extension_file = (
-                    self.rotaconformers_extension_filepattern.replace(x, seq0)
+                    _sequence_path(self.rotaconformers_extension_filepattern, seq0)
                 )
                 assert os.path.exists(rotaconformers_extension_file)
                 assert self.rotaconformers_extension_index_filepattern is not None
                 rotaconformers_extension_index_file = (
-                    self.rotaconformers_extension_index_filepattern.replace(x, seq0)
+                    _sequence_path(
+                        self.rotaconformers_extension_index_filepattern, seq0
+                    )
                 )
                 assert os.path.exists(rotaconformers_extension_index_file)
 
@@ -711,6 +700,19 @@ class LibraryDirectory:
 
 _FRAGLIB_YAML_PATH = Path("~/.crocodile/fraglib.yaml").expanduser()
 _VAR_PATTERN = re.compile(r"\$(\w+)|\${([^}]+)}")
+_FRAGLIB_REQUIRED_KEYS = [
+    "fraglen",
+    "conformers",
+    "conformer_replacements",
+    "conformer_replacement_origins",
+    "conformer_extensions",
+    "conformer_extension_origins",
+    "rotamers",
+    "rotamers_indices",
+    "rotamer_extensions",
+    "rotamer_extension_indices",
+    "crmsds",
+]
 
 
 def _load_fraglib_yaml(path: Path) -> dict[str, object]:
@@ -770,6 +772,18 @@ def _expand_fraglib_config(raw: dict[str, object]) -> dict[str, object]:
     return resolved
 
 
+@lru_cache(maxsize=None)
+def _load_fraglib_config(path: str) -> dict[str, object]:
+    raw_config = _load_fraglib_yaml(Path(path))
+    config_data = _expand_fraglib_config(raw_config)
+    _require_config_keys(config_data, _FRAGLIB_REQUIRED_KEYS)
+    return config_data
+
+
+def _fraglib_config() -> dict[str, object]:
+    return _load_fraglib_config(str(_FRAGLIB_YAML_PATH))
+
+
 def _require_config_keys(config: dict[str, object], keys: list[str]) -> None:
     missing = [key for key in keys if key not in config or config[key] is None]
     if missing:
@@ -791,11 +805,130 @@ def _require_int(config: dict[str, object], key: str) -> int:
     return value
 
 
+def _representative_sequence(sequence: str, *, rna: bool = True) -> str:
+    sequence = sequence.upper()
+    base_ut = "U" if rna else "T"
+    invalid = sorted(set(sequence) - {"A", "C", "G", base_ut})
+    if invalid:
+        invalid_str = ", ".join(invalid)
+        raise ValueError(f"Invalid nucleotide base(s): {invalid_str}")
+    return sequence.replace("G", "A").replace(base_ut, "C")
+
+
+def _normalise_pdb_codes(
+    pdb_code: Optional[str | list[str] | tuple[str, ...] | set[str]],
+) -> Optional[set[str]]:
+    if pdb_code is None:
+        return None
+    if isinstance(pdb_code, str):
+        pdb_codes = {pdb_code.lower()}
+    elif isinstance(pdb_code, (list, tuple, set)):
+        pdb_codes = {str(code).lower() for code in pdb_code}
+    else:
+        raise TypeError("pdb_code must be a string or a list/tuple/set of strings")
+    return pdb_codes or None
+
+
+def _origin_indices_for_pdb_codes(origins: list[str], pdb_codes: set[str]) -> list[int]:
+    return [
+        origin_index
+        for origin_index, origin in enumerate(origins)
+        if origin.lower() in pdb_codes
+    ]
+
+
+def _sequence_path(filepattern: str, sequence: str) -> str:
+    placeholder = "X" * len(sequence)
+    if placeholder not in filepattern:
+        raise ValueError(
+            f"File pattern {filepattern!r} does not contain placeholder {placeholder!r}"
+        )
+    return filepattern.replace(placeholder, sequence)
+
+
+def _extension_origin_indices(
+    config_data: dict[str, object],
+    sequence: str,
+    pdb_codes: set[str],
+) -> np.ndarray:
+    primary_path = Path(
+        _sequence_path(_require_str(config_data, "conformers"), sequence)
+    )
+    primary_len = int(np.load(primary_path, mmap_mode="r").shape[0])
+
+    origins_path = Path(
+        _sequence_path(_require_str(config_data, "conformer_extension_origins"), sequence)
+    )
+    origins = [line.strip() for line in origins_path.read_text().splitlines()]
+    matching = _origin_indices_for_pdb_codes(origins, pdb_codes)
+    return primary_len + np.array(matching, dtype=np.intp)
+
+
+def load_crmsds(
+    ab: str,
+    bc: str,
+    pdb_code: Optional[str | list[str] | tuple[str, ...] | set[str]] = None,
+) -> np.ndarray:
+    """Load the cRMSD matrix for overlapping dinucleotide libraries AB and BC.
+
+    The matrix is stored under the representative A/C trinucleotide sequence
+    ABC, following the same G->A and U->C convention as the dinucleotide
+    library loader. If pdb_code is provided, extension conformers with that
+    origin are invalidated by setting their rows or columns to infinity.
+    Primary conformer replacement-table substitution is intentionally ignored.
+    """
+    ab = ab.upper()
+    bc = bc.upper()
+    if len(ab) != 2 or len(bc) != 2:
+        raise ValueError("ab and bc must both be dinucleotide sequences")
+    if ab[1] != bc[0]:
+        raise ValueError(f"Dinucleotides must overlap as AB/BC, got {ab!r} and {bc!r}")
+
+    pair_sequence = ab + bc[1]
+    crmsd_sequence = _representative_sequence(pair_sequence)
+    ab_sequence = crmsd_sequence[:2]
+    bc_sequence = crmsd_sequence[1:]
+
+    config_data = _fraglib_config()
+
+    crmsd_path = Path(
+        _sequence_path(_require_str(config_data, "crmsds"), crmsd_sequence)
+    )
+    crmsds = np.load(crmsd_path)
+
+    pdb_codes = _normalise_pdb_codes(pdb_code)
+    if pdb_codes is None:
+        return crmsds
+
+    _require_config_keys(
+        config_data,
+        ["conformers", "conformer_extension_origins"],
+    )
+    rows = _extension_origin_indices(config_data, ab_sequence, pdb_codes)
+    cols = _extension_origin_indices(config_data, bc_sequence, pdb_codes)
+    if rows.size and int(rows.max()) >= crmsds.shape[0]:
+        raise ValueError(
+            f"Extension origin rows for {ab_sequence} exceed cRMSD matrix shape {crmsds.shape}"
+        )
+    if cols.size and int(cols.max()) >= crmsds.shape[1]:
+        raise ValueError(
+            f"Extension origin columns for {bc_sequence} exceed cRMSD matrix shape {crmsds.shape}"
+        )
+    if (rows.size or cols.size) and not np.issubdtype(crmsds.dtype, np.floating):
+        crmsds = crmsds.astype(float)
+    if rows.size:
+        crmsds[rows, :] = np.inf
+    if cols.size:
+        crmsds[:, cols] = np.inf
+    return crmsds
+
+
 def _checksum_target_path(
     checksum_path: Path,
     fraglib_root: Path,
     conformer_dir: Path,
     rotamer_dir: Path,
+    crmsd_dir: Path,
 ) -> Path:
     relative = checksum_path.relative_to(fraglib_root)
     if relative.parts and relative.parts[0] == "conformers":
@@ -804,6 +937,9 @@ def _checksum_target_path(
     if relative.parts and relative.parts[0] == "rotamers":
         subpath = Path(*relative.parts[1:]).with_suffix("")
         return rotamer_dir / subpath
+    if relative.parts and relative.parts[0] == "crmsds":
+        subpath = Path(*relative.parts[1:]).with_suffix("")
+        return crmsd_dir / subpath
     return fraglib_root / relative.with_suffix("")
 
 
@@ -822,13 +958,14 @@ def _verify_checksums(config: dict[str, object], fraglib_root: Path) -> None:
 
     conformer_dir = Path(os.path.dirname(_require_str(config, "conformers")))
     rotamer_dir = Path(os.path.dirname(_require_str(config, "rotamers")))
+    crmsd_dir = Path(os.path.dirname(_require_str(config, "crmsds")))
 
     errors = []
     for checksum_path in checksum_files:
         expected_raw = checksum_path.read_text().strip()
         expected = expected_raw.split()[0] if expected_raw else ""
         target_path = _checksum_target_path(
-            checksum_path, fraglib_root, conformer_dir, rotamer_dir
+            checksum_path, fraglib_root, conformer_dir, rotamer_dir, crmsd_dir
         )
         if not target_path.exists():
             errors.append(f"Missing file for checksum: {target_path}")
@@ -861,23 +998,7 @@ def _resolve_templates_dir(config: dict[str, object], fraglib_root: Path) -> Pat
 def config(
     verify_checksums: bool = True,
 ) -> tuple[dict[str, "LibraryFactory"], dict[str, np.ndarray]]:
-    raw_config = _load_fraglib_yaml(_FRAGLIB_YAML_PATH)
-    config_data = _expand_fraglib_config(raw_config)
-    _require_config_keys(
-        config_data,
-        [
-            "fraglen",
-            "conformers",
-            "conformer_replacements",
-            "conformer_replacement_origins",
-            "conformer_extensions",
-            "conformer_extension_origins",
-            "rotamers",
-            "rotamers_indices",
-            "rotamer_extensions",
-            "rotamer_extension_indices",
-        ],
-    )
+    config_data = _fraglib_config()
 
     fraglib_root = Path(__file__).resolve().parent.parent / "fraglib"
     if verify_checksums:
