@@ -10,6 +10,7 @@ from typing import Sequence
 
 import numpy as np
 from scipy.spatial.transform import Rotation
+from tqdm import tqdm
 
 _CODE_DIR = Path(__file__).resolve().parent
 if str(_CODE_DIR) not in sys.path:
@@ -479,6 +480,36 @@ def _expand_source_instances(
     return repeat_idx, cache.instance_translations[translation_indices]
 
 
+def _estimate_trace_work(
+    source_caches: dict[int, SourceConformerCache],
+    target_library,
+    target_to_sources: dict[int, np.ndarray],
+    target_conformers: np.ndarray,
+    target_rotamer_positions: np.ndarray | None,
+) -> int:
+    total = 0
+    fixed_target_rotamer_count = (
+        None if target_rotamer_positions is None else len(target_rotamer_positions)
+    )
+    for target_conformer in target_conformers.tolist():
+        sources = target_to_sources.get(int(target_conformer))
+        if sources is None:
+            continue
+        target_rotamer_count = (
+            len(target_library.get_rotamers(int(target_conformer)))
+            if fixed_target_rotamer_count is None
+            else fixed_target_rotamer_count
+        )
+        if target_rotamer_count == 0:
+            continue
+        for source_conformer in sources.tolist():
+            cache = source_caches.get(int(source_conformer))
+            if cache is None:
+                continue
+            total += len(cache.rotamer_flat) * target_rotamer_count
+    return int(total)
+
+
 def _pooled_trace_grow(
     source_caches: dict[int, SourceConformerCache],
     target_library,
@@ -495,6 +526,20 @@ def _pooled_trace_grow(
         output_dir,
         zstd=True,
         max_poses_per_chunk=max_poses_per_chunk,
+    )
+    trace_work_total = _estimate_trace_work(
+        source_caches,
+        target_library,
+        target_to_sources,
+        target_conformers,
+        target_rotamer_positions,
+    )
+    progress = tqdm(
+        total=trace_work_total,
+        desc="Trace grow",
+        unit="rotpair",
+        unit_scale=True,
+        mininterval=2.0,
     )
     total_overlap_sd = None
     try:
@@ -530,200 +575,224 @@ def _pooled_trace_grow(
                 cache = source_caches.get(int(source_conformer))
                 if cache is None:
                     continue
-                cross_second_moment = cache.centered.T.dot(centered_t).astype(
-                    np.float32,
-                    copy=False,
-                )
-                sqq_t = np.einsum(
-                    "ij,jkn->ikn",
-                    cross_second_moment,
-                    rot_qq_3x3n,
-                    optimize=True,
-                ).reshape(9, len(rot_qq))
-                trace_block = cache.rotamer_flat @ sqq_t
-                rc_sd = cache.pose_trace + target_trace - 2.0 * trace_block
-                rc_sd = np.maximum(rc_sd, 0.0).astype(np.float32, copy=False)
-
-                pp_rows, qq_cols = np.nonzero(rc_sd < total_overlap_sd)
-                if pp_rows.size == 0:
-                    continue
-                rc_kept = rc_sd[pp_rows, qq_cols]
-                repeat_idx, instance_translations = _expand_source_instances(
-                    cache, pp_rows
-                )
-                if instance_translations.size == 0:
-                    continue
-                pp_rows_exp = pp_rows[repeat_idx]
-                qq_cols_exp = qq_cols[repeat_idx]
-                rc_exp = rc_kept[repeat_idx]
-
-                source_means = (
-                    cache.mean_rotated[pp_rows_exp]
-                    + instance_translations.astype(np.float32) * GRID_SPACING
-                )
-                continuous_translation = source_means - means_q[qq_cols_exp]
-                best_grid = np.rint(continuous_translation / GRID_SPACING).astype(
-                    np.int32
-                )
-                best_world = best_grid.astype(np.float32) * GRID_SPACING
-                delta = best_world - continuous_translation
-                grid_discretization_sd = (
-                    natoms * np.einsum("ij,ij->i", delta, delta)
-                ).astype(np.float32, copy=False)
-                remaining2 = total_overlap_sd - grid_discretization_sd
-
-                rot_boundary_rmsd = np.sqrt(np.maximum(remaining2, 0.0) / natoms)
-                rot_boundary_tolerance = _rmsd_tolerance_to_sd_tolerance(
-                    natoms,
-                    rot_boundary_rmsd,
-                    TRACE_RMSD_BOUNDARY_TOLERANCE,
-                )
-                rot_boundary = np.abs(rc_exp - remaining2) <= rot_boundary_tolerance
-                if np.any(rot_boundary):
-                    boundary_rows = np.nonzero(rot_boundary)[0]
-                    source_centered = np.einsum(
-                        "aj,njk->nak",
-                        cache.centered,
-                        cache.rotamer_matrices[pp_rows_exp[boundary_rows]],
-                        optimize=True,
+                trace_work = len(cache.rotamer_flat) * len(rot_qq)
+                try:
+                    cross_second_moment = cache.centered.T.dot(centered_t).astype(
+                        np.float32,
+                        copy=False,
                     )
-                    target_centered = np.einsum(
-                        "aj,njk->nak",
-                        centered_t,
-                        rot_qq[qq_cols_exp[boundary_rows]],
-                        optimize=True,
+                    # This is currently a no-op after reshape, but keeps the BLAS operand
+                    # layout explicit if the einsum/reshape path changes later.
+                    sqq_t = np.ascontiguousarray(
+                        np.einsum(
+                            "ij,jkn->ikn",
+                            cross_second_moment,
+                            rot_qq_3x3n,
+                            optimize=True,
+                        ).reshape(9, len(rot_qq))
                     )
-                    dif = source_centered - target_centered
-                    rc_exp[boundary_rows] = np.einsum("nij,nij->n", dif, dif)
+                    trace_block = cache.rotamer_flat @ sqq_t
+                    rc_sd = cache.pose_trace + target_trace - 2.0 * trace_block
+                    rc_sd = np.maximum(rc_sd, 0.0).astype(np.float32, copy=False)
 
-                keep_rot = np.nonzero(rc_exp < remaining2)[0]
-                if keep_rot.size == 0:
-                    continue
-
-                kept_pp_rows = pp_rows_exp[keep_rot]
-                kept_qq_cols = qq_cols_exp[keep_rot]
-                kept_rc = rc_exp[keep_rot]
-                kept_best_grid = best_grid[keep_rot]
-                kept_delta = delta[keep_rot]
-                kept_instance_translations = instance_translations[keep_rot]
-                remaining3 = (
-                    total_overlap_sd - grid_discretization_sd[keep_rot] - kept_rc
-                )
-                remaining4 = total_overlap_sd - kept_rc
-
-                set_indices = _select_translation_set_index(
-                    translation_sets,
-                    remaining3,
-                    natoms,
-                )
-                set_order = np.argsort(set_indices, kind="stable")
-                ordered_set_indices = set_indices[set_order]
-                set_starts = np.concatenate(
-                    (
-                        np.array([0], dtype=np.int64),
-                        np.flatnonzero(
-                            ordered_set_indices[1:] != ordered_set_indices[:-1]
-                        )
-                        + 1,
-                    )
-                )
-                set_stops = np.concatenate(
-                    (set_starts[1:], np.array([len(set_order)], dtype=np.int64))
-                )
-
-                for set_start, set_stop in zip(set_starts, set_stops):
-                    set_index = int(ordered_set_indices[set_start])
-                    translation_offsets = translation_sets.offsets[set_index]
-                    if len(translation_offsets) == 0:
+                    pp_rows, qq_cols = np.nonzero(rc_sd < total_overlap_sd)
+                    if pp_rows.size == 0:
                         continue
-                    local_rows = set_order[set_start:set_stop]
-                    translation_offsets32 = translation_offsets.astype(
-                        np.float32, copy=False
+                    rc_kept = rc_sd[pp_rows, qq_cols]
+                    repeat_idx, instance_translations = _expand_source_instances(
+                        cache, pp_rows
                     )
-                    shifted_delta = (
-                        kept_delta[local_rows, None, :]
-                        + translation_offsets32[None, :, :] * GRID_SPACING
+                    if instance_translations.size == 0:
+                        continue
+                    pp_rows_exp = pp_rows[repeat_idx]
+                    qq_cols_exp = qq_cols[repeat_idx]
+                    rc_exp = rc_kept[repeat_idx]
+
+                    source_means = (
+                        cache.mean_rotated[pp_rows_exp]
+                        + instance_translations.astype(np.float32) * GRID_SPACING
                     )
-                    translation_sd = natoms * np.einsum(
-                        "rgj,rgj->rg",
-                        shifted_delta,
-                        shifted_delta,
+                    continuous_translation = source_means - means_q[qq_cols_exp]
+                    best_grid = np.rint(continuous_translation / GRID_SPACING).astype(
+                        np.int32
                     )
-                    keep = translation_sd < remaining4[local_rows, None]
-                    combined_sd = translation_sd + kept_rc[local_rows, None]
-                    boundary = np.abs(np.sqrt(combined_sd / natoms) - ov_rmsd) <= max(
-                        RMSD_BOUNDARY_TOLERANCE,
+                    best_world = best_grid.astype(np.float32) * GRID_SPACING
+                    delta = best_world - continuous_translation
+                    grid_discretization_sd = (
+                        natoms * np.einsum("ij,ij->i", delta, delta)
+                    ).astype(np.float32, copy=False)
+                    remaining2 = total_overlap_sd - grid_discretization_sd
+
+                    rot_boundary_rmsd = np.sqrt(np.maximum(remaining2, 0.0) / natoms)
+                    rot_boundary_tolerance = _rmsd_tolerance_to_sd_tolerance(
+                        natoms,
+                        rot_boundary_rmsd,
                         TRACE_RMSD_BOUNDARY_TOLERANCE,
                     )
-                    if np.any(boundary):
-                        boundary_rows, boundary_offsets = np.nonzero(boundary)
-                        exact_rows = local_rows[boundary_rows]
-                        source_pose = np.einsum(
+                    rot_boundary = (
+                        np.abs(rc_exp - remaining2) <= rot_boundary_tolerance
+                    )
+                    if np.any(rot_boundary):
+                        boundary_rows = np.nonzero(rot_boundary)[0]
+                        source_centered = np.einsum(
                             "aj,njk->nak",
-                            cache.coords,
-                            cache.rotamer_matrices[kept_pp_rows[exact_rows]],
+                            cache.centered,
+                            cache.rotamer_matrices[pp_rows_exp[boundary_rows]],
                             optimize=True,
                         )
-                        target_pose = np.einsum(
+                        target_centered = np.einsum(
                             "aj,njk->nak",
-                            coords_t,
-                            rot_qq[kept_qq_cols[exact_rows]],
+                            centered_t,
+                            rot_qq[qq_cols_exp[boundary_rows]],
                             optimize=True,
                         )
-                        source_world = (
-                            kept_instance_translations[exact_rows].astype(np.float32)
-                            * GRID_SPACING
-                        )
-                        target_world = (
-                            kept_best_grid[exact_rows]
-                            + translation_offsets[boundary_offsets].astype(np.int32)
-                        ).astype(np.float32) * GRID_SPACING
-                        dif = (
-                            target_pose
-                            + target_world[:, None, :]
-                            - source_pose
-                            - source_world[:, None, :]
-                        )
-                        boundary_rmsd = np.sqrt(
-                            np.einsum("nij,nij->n", dif, dif) / natoms
-                        )
-                        keep[boundary] = False
-                        keep[boundary_rows, boundary_offsets] = boundary_rmsd < ov_rmsd
-                    kept_rows, kept_offsets = np.nonzero(keep)
-                    if kept_rows.size == 0:
+                        dif = source_centered - target_centered
+                        rc_exp[boundary_rows] = np.einsum("nij,nij->n", dif, dif)
+
+                    keep_rot = np.nonzero(rc_exp < remaining2)[0]
+                    if keep_rot.size == 0:
                         continue
 
-                    translations = kept_best_grid[
-                        local_rows[kept_rows]
-                    ] + translation_offsets[kept_offsets].astype(np.int32)
-                    if translations.size and (
-                        translations.min() < np.iinfo(np.int16).min
-                        or translations.max() > np.iinfo(np.int16).max
-                    ):
-                        raise ValueError("translation exceeds int16 range")
-                    if target_conformer > np.iinfo(np.uint16).max:
-                        raise ValueError("target conformer exceeds uint16 range")
-                    out_conformers = np.full(
-                        len(translations),
-                        target_conformer,
-                        dtype=np.uint16,
+                    kept_pp_rows = pp_rows_exp[keep_rot]
+                    kept_qq_cols = qq_cols_exp[keep_rot]
+                    kept_rc = rc_exp[keep_rot]
+                    kept_best_grid = best_grid[keep_rot]
+                    kept_delta = delta[keep_rot]
+                    kept_instance_translations = instance_translations[keep_rot]
+                    remaining3 = (
+                        total_overlap_sd - grid_discretization_sd[keep_rot] - kept_rc
                     )
-                    out_rotamers = rotamer_indices[kept_qq_cols[local_rows[kept_rows]]]
-                    if (
-                        len(out_rotamers)
-                        and int(out_rotamers.max()) > np.iinfo(np.uint16).max
-                    ):
-                        raise ValueError("target rotamer exceeds uint16 range")
-                    emit_order = _stable_pose_order(out_rotamers, translations)
-                    writer.add_chunk(
-                        out_conformers[emit_order],
-                        out_rotamers[emit_order].astype(np.uint16, copy=False),
-                        translations[emit_order].astype(np.int16, copy=False),
+                    remaining4 = total_overlap_sd - kept_rc
+
+                    set_indices = _select_translation_set_index(
+                        translation_sets,
+                        remaining3,
+                        natoms,
                     )
+                    set_order = np.argsort(set_indices, kind="stable")
+                    ordered_set_indices = set_indices[set_order]
+                    set_starts = np.concatenate(
+                        (
+                            np.array([0], dtype=np.int64),
+                            np.flatnonzero(
+                                ordered_set_indices[1:] != ordered_set_indices[:-1]
+                            )
+                            + 1,
+                        )
+                    )
+                    set_stops = np.concatenate(
+                        (set_starts[1:], np.array([len(set_order)], dtype=np.int64))
+                    )
+
+                    for set_start, set_stop in zip(set_starts, set_stops):
+                        set_index = int(ordered_set_indices[set_start])
+                        translation_offsets = translation_sets.offsets[set_index]
+                        if len(translation_offsets) == 0:
+                            continue
+                        local_rows = set_order[set_start:set_stop]
+                        translation_offsets32 = translation_offsets.astype(
+                            np.float32, copy=False
+                        )
+                        shifted_delta = (
+                            kept_delta[local_rows, None, :]
+                            + translation_offsets32[None, :, :] * GRID_SPACING
+                        )
+                        translation_sd = natoms * np.einsum(
+                            "rgj,rgj->rg",
+                            shifted_delta,
+                            shifted_delta,
+                        )
+                        keep = translation_sd < remaining4[local_rows, None]
+                        combined_sd = translation_sd + kept_rc[local_rows, None]
+                        boundary = (
+                            np.abs(np.sqrt(combined_sd / natoms) - ov_rmsd)
+                            <= max(
+                                RMSD_BOUNDARY_TOLERANCE,
+                                TRACE_RMSD_BOUNDARY_TOLERANCE,
+                            )
+                        )
+                        if np.any(boundary):
+                            boundary_rows, boundary_offsets = np.nonzero(boundary)
+                            exact_rows = local_rows[boundary_rows]
+                            source_pose = np.einsum(
+                                "aj,njk->nak",
+                                cache.coords,
+                                cache.rotamer_matrices[kept_pp_rows[exact_rows]],
+                                optimize=True,
+                            )
+                            target_pose = np.einsum(
+                                "aj,njk->nak",
+                                coords_t,
+                                rot_qq[kept_qq_cols[exact_rows]],
+                                optimize=True,
+                            )
+                            source_world = (
+                                kept_instance_translations[exact_rows].astype(
+                                    np.float32
+                                )
+                                * GRID_SPACING
+                            )
+                            target_world = (
+                                kept_best_grid[exact_rows]
+                                + translation_offsets[boundary_offsets].astype(
+                                    np.int32
+                                )
+                            ).astype(np.float32) * GRID_SPACING
+                            dif = (
+                                target_pose
+                                + target_world[:, None, :]
+                                - source_pose
+                                - source_world[:, None, :]
+                            )
+                            boundary_rmsd = np.sqrt(
+                                np.einsum("nij,nij->n", dif, dif) / natoms
+                            )
+                            keep[boundary] = False
+                            keep[boundary_rows, boundary_offsets] = (
+                                boundary_rmsd < ov_rmsd
+                            )
+                        kept_rows, kept_offsets = np.nonzero(keep)
+                        if kept_rows.size == 0:
+                            continue
+
+                        translations = kept_best_grid[
+                            local_rows[kept_rows]
+                        ] + translation_offsets[kept_offsets].astype(np.int32)
+                        if translations.size and (
+                            translations.min() < np.iinfo(np.int16).min
+                            or translations.max() > np.iinfo(np.int16).max
+                        ):
+                            raise ValueError("translation exceeds int16 range")
+                        if target_conformer > np.iinfo(np.uint16).max:
+                            raise ValueError("target conformer exceeds uint16 range")
+                        out_conformers = np.full(
+                            len(translations),
+                            target_conformer,
+                            dtype=np.uint16,
+                        )
+                        out_rotamers = rotamer_indices[
+                            kept_qq_cols[local_rows[kept_rows]]
+                        ]
+                        if (
+                            len(out_rotamers)
+                            and int(out_rotamers.max()) > np.iinfo(np.uint16).max
+                        ):
+                            raise ValueError("target rotamer exceeds uint16 range")
+                        emit_order = _stable_pose_order(out_rotamers, translations)
+                        writer.add_chunk(
+                            out_conformers[emit_order],
+                            out_rotamers[emit_order].astype(np.uint16, copy=False),
+                            translations[emit_order].astype(np.int16, copy=False),
+                        )
+                finally:
+                    if trace_work:
+                        progress.update(trace_work)
+                        progress.set_postfix(poses=writer.total_poses, refresh=False)
 
         writer.finish()
         return writer.total_poses
     finally:
+        progress.close()
         writer.cleanup()
 
 
