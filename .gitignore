@@ -12,3 +12,6 @@ WIP/RUN-*
 WIP/ramscratch
 WIP/BAK
 tests/1b7f/1b7f-frag4-scored-and-merged/poses*.pdb
+grow-implementation/*/case*/poses-*.npy
+grow-implementation/*/case*/offsets-*.dat
+grow-implementation/*/case*.csv
